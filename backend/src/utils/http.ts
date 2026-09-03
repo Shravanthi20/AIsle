@@ -5,6 +5,7 @@ export const httpStatus = {
   unauthorized: 401,
   forbidden: 403,
   conflict: 409,
+  notFound: 404,
   internalServerError: 500,
 } as const;
 

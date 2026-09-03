@@ -11,6 +11,7 @@ export interface Product {
   stock: number;
   imageUrl: string | null;
   status: ProductStatus;
+  attributes: ProductAttribute[];
   createdAt: Date;
   updatedAt: Date;
 }

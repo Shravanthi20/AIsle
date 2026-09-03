@@ -1,7 +1,7 @@
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000/api';
 
 interface ApiRequestOptions {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   token?: string | null;
 }
@@ -44,4 +44,16 @@ export async function apiPost<TResponse>(
   token?: string | null,
 ): Promise<TResponse> {
   return apiRequest<TResponse>(path, { method: 'POST', body, token });
+}
+
+export function apiPut<TResponse>(path: string, body: unknown, token?: string | null) {
+  return apiRequest<TResponse>(path, { method: 'PUT', body, token });
+}
+
+export function apiPatch<TResponse>(path: string, body: unknown, token?: string | null) {
+  return apiRequest<TResponse>(path, { method: 'PATCH', body, token });
+}
+
+export function apiDelete<TResponse>(path: string, token?: string | null) {
+  return apiRequest<TResponse>(path, { method: 'DELETE', token });
 }

@@ -26,7 +26,7 @@ interface ProductAttributeRecord {
   updated_at: Date;
 }
 
-interface CreateProductInput {
+export interface CreateProductInput {
   merchantId: string;
   name: string;
   description?: string | null;
@@ -39,7 +39,7 @@ interface CreateProductInput {
   attributes?: Record<string, string>;
 }
 
-interface UpdateProductInput {
+export interface UpdateProductInput {
   name?: string;
   description?: string | null;
   category?: string;
@@ -48,6 +48,7 @@ interface UpdateProductInput {
   stock?: number;
   imageUrl?: string | null;
   status?: ProductStatus;
+  attributes?: Record<string, string>;
 }
 
 function mapProduct(record: ProductRecord): Product {
@@ -62,6 +63,7 @@ function mapProduct(record: ProductRecord): Product {
     stock: record.stock,
     imageUrl: record.image_url,
     status: record.status,
+    attributes: [],
     createdAt: record.created_at,
     updatedAt: record.updated_at,
   };
@@ -79,6 +81,10 @@ function mapProductAttribute(record: ProductAttributeRecord): ProductAttribute {
 }
 
 export class ProductRepository {
+  private async withAttributes(product: Product): Promise<Product> {
+    return { ...product, attributes: await this.getProductAttributes(product.id) };
+  }
+
   async createProduct(input: CreateProductInput): Promise<Product> {
     const client = await pool.connect();
 
@@ -117,7 +123,7 @@ export class ProductRepository {
       }
 
       await client.query('COMMIT');
-      return mapProduct(product);
+      return this.withAttributes(mapProduct(product));
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
@@ -126,17 +132,17 @@ export class ProductRepository {
     }
   }
 
-  async getProductById(id: string): Promise<Product | null> {
+  async getProductById(id: string, merchantId?: string): Promise<Product | null> {
     const result = await pool.query<ProductRecord>(
       `
         SELECT id, merchant_id, name, description, category, price, currency, stock, image_url, status, created_at, updated_at
         FROM products
-        WHERE id = $1
+        WHERE id = $1 AND ($2::uuid IS NULL OR merchant_id = $2)
       `,
-      [id],
+      [id, merchantId ?? null],
     );
 
-    return result.rows[0] ? mapProduct(result.rows[0]) : null;
+    return result.rows[0] ? this.withAttributes(mapProduct(result.rows[0])) : null;
   }
 
   async getProductsByMerchant(merchantId: string): Promise<Product[]> {
@@ -150,7 +156,7 @@ export class ProductRepository {
       [merchantId],
     );
 
-    return result.rows.map(mapProduct);
+    return Promise.all(result.rows.map((row) => this.withAttributes(mapProduct(row))));
   }
 
   async getProductAttributes(productId: string): Promise<ProductAttribute[]> {
@@ -167,23 +173,31 @@ export class ProductRepository {
     return result.rows.map(mapProductAttribute);
   }
 
-  async updateStock(id: string, stock: number): Promise<Product | null> {
+  async updateStock(id: string, merchantId: string, stock: number): Promise<Product | null> {
     const result = await pool.query<ProductRecord>(
       `
         UPDATE products
         SET stock = $2
-        WHERE id = $1
+        WHERE id = $1 AND merchant_id = $2
         RETURNING id, merchant_id, name, description, category, price, currency, stock, image_url, status, created_at, updated_at
       `,
-      [id, stock],
+      [id, merchantId, stock],
     );
 
-    return result.rows[0] ? mapProduct(result.rows[0]) : null;
+    return result.rows[0] ? this.withAttributes(mapProduct(result.rows[0])) : null;
   }
 
-  async updateProduct(id: string, input: UpdateProductInput): Promise<Product | null> {
-    const result = await pool.query<ProductRecord>(
-      `
+  async updateProduct(
+    id: string,
+    merchantId: string,
+    input: UpdateProductInput,
+  ): Promise<Product | null> {
+    const client = await pool.connect();
+
+    try {
+      await client.query('BEGIN');
+      const result = await client.query<ProductRecord>(
+        `
         UPDATE products
         SET
           name = COALESCE($2, name),
@@ -194,23 +208,60 @@ export class ProductRepository {
           stock = COALESCE($7, stock),
           image_url = COALESCE($8, image_url),
           status = COALESCE($9, status)
-        WHERE id = $1
+        WHERE id = $1 AND merchant_id = $2
         RETURNING id, merchant_id, name, description, category, price, currency, stock, image_url, status, created_at, updated_at
       `,
-      [
-        id,
-        input.name ?? null,
-        input.description ?? null,
-        input.category ?? null,
-        input.price ?? null,
-        input.currency ?? null,
-        input.stock ?? null,
-        input.imageUrl ?? null,
-        input.status ?? null,
-      ],
+        [
+          id,
+          merchantId,
+          input.name ?? null,
+          input.description ?? null,
+          input.category ?? null,
+          input.price ?? null,
+          input.currency ?? null,
+          input.stock ?? null,
+          input.imageUrl ?? null,
+          input.status ?? null,
+        ],
+      );
+
+      if (!result.rows[0]) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+
+      if (input.attributes) {
+        await client.query('DELETE FROM product_attributes WHERE product_id = $1', [id]);
+        for (const [key, value] of Object.entries(input.attributes)) {
+          await client.query(
+            'INSERT INTO product_attributes (product_id, key, value) VALUES ($1, $2, $3)',
+            [id, key, value],
+          );
+        }
+      }
+
+      await client.query('COMMIT');
+      return this.withAttributes(mapProduct(result.rows[0]));
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async deactivateProduct(id: string, merchantId: string): Promise<Product | null> {
+    const result = await pool.query<ProductRecord>(
+      `
+        UPDATE products
+        SET status = 'INACTIVE'
+        WHERE id = $1 AND merchant_id = $2
+        RETURNING id, merchant_id, name, description, category, price, currency, stock, image_url, status, created_at, updated_at
+      `,
+      [id, merchantId],
     );
 
-    return result.rows[0] ? mapProduct(result.rows[0]) : null;
+    return result.rows[0] ? this.withAttributes(mapProduct(result.rows[0])) : null;
   }
 
   async searchProducts(query: string): Promise<Product[]> {
@@ -233,10 +284,5 @@ export class ProductRepository {
     );
 
     return result.rows.map(mapProduct);
-  }
-
-  async deleteProduct(id: string): Promise<boolean> {
-    const result = await pool.query('DELETE FROM products WHERE id = $1', [id]);
-    return (result.rowCount ?? 0) > 0;
   }
 }
