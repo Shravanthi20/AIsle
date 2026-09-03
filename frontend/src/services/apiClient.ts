@@ -1,11 +1,47 @@
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:4000/api';
 
-export async function apiGet<TResponse>(path: string): Promise<TResponse> {
-  const response = await fetch(`${apiBaseUrl}${path}`);
+interface ApiRequestOptions {
+  method?: 'GET' | 'POST';
+  body?: unknown;
+  token?: string | null;
+}
+
+export async function apiRequest<TResponse>(
+  path: string,
+  options: ApiRequestOptions = {},
+): Promise<TResponse> {
+  const headers = new Headers();
+
+  if (options.body !== undefined) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (options.token) {
+    headers.set('Authorization', `Bearer ${options.token}`);
+  }
+
+  const response = await fetch(`${apiBaseUrl}${path}`, {
+    method: options.method ?? 'GET',
+    headers,
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
 
   if (!response.ok) {
-    throw new Error(`Request failed with status ${response.status}`);
+    const errorBody = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(errorBody?.message ?? `Request failed with status ${response.status}`);
   }
 
   return response.json() as Promise<TResponse>;
+}
+
+export async function apiGet<TResponse>(path: string, token?: string | null): Promise<TResponse> {
+  return apiRequest<TResponse>(path, { token });
+}
+
+export async function apiPost<TResponse>(
+  path: string,
+  body?: unknown,
+  token?: string | null,
+): Promise<TResponse> {
+  return apiRequest<TResponse>(path, { method: 'POST', body, token });
 }

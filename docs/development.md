@@ -22,6 +22,18 @@ Copy `.env.example` to `.env` and adjust local values as needed. Do not commit r
 docker compose up -d postgres
 ```
 
+## Run Database Migrations
+
+```bash
+npm run db:migrate --workspace backend
+```
+
+## Seed Development Data
+
+```bash
+npm run db:seed --workspace backend
+```
+
 ## Run Backend
 
 ```bash

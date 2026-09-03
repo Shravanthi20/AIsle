@@ -61,6 +61,18 @@ npm install
 docker compose up -d postgres
 ```
 
+### Run Database Migrations
+
+```bash
+npm run db:migrate --workspace backend
+```
+
+### Seed Development Data
+
+```bash
+npm run db:seed --workspace backend
+```
+
 ### Start Backend
 
 ```bash
@@ -79,7 +91,7 @@ The frontend runs on `http://localhost:5173` by default.
 
 ## Current Status
 
-The project is currently at the foundation/setup stage. Core application structure, initial routing, health checks, local PostgreSQL configuration, documentation, and development tooling are in place.
+The project is currently at the foundation/setup stage. Core application structure, initial routing, health checks, local PostgreSQL configuration, the initial commerce database schema, documentation, and development tooling are in place.
 
 ## Roadmap
 

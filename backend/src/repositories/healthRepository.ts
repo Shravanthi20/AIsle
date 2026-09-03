@@ -1,4 +1,4 @@
-import { checkDatabaseConnection } from '../config/database.js';
+import { checkDatabaseConnection } from '../database/db.js';
 
 export class HealthRepository {
   async isDatabaseConnected(): Promise<boolean> {
