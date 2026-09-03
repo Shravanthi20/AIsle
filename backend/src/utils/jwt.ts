@@ -40,6 +40,15 @@ export function verifyAuthToken(token: string): AuthenticatedUser {
     throw new HttpError(httpStatus.unauthorized, 'Invalid authentication token');
   }
 
+  try {
+    const decodedHeader = JSON.parse(base64UrlDecode(header)) as { alg?: string; typ?: string };
+    if (decodedHeader.alg !== 'HS256' || decodedHeader.typ !== 'JWT') {
+      throw new Error('Unsupported token');
+    }
+  } catch {
+    throw new HttpError(httpStatus.unauthorized, 'Invalid authentication token');
+  }
+
   const expectedSignature = sign(`${header}.${payload}`);
   const signatureBuffer = Buffer.from(signature);
   const expectedSignatureBuffer = Buffer.from(expectedSignature);
@@ -63,7 +72,8 @@ export function verifyAuthToken(token: string): AuthenticatedUser {
     !decodedPayload.id ||
     !decodedPayload.name ||
     !decodedPayload.email ||
-    (decodedPayload.role !== 'MERCHANT' && decodedPayload.role !== 'BUYER')
+    (decodedPayload.role !== 'MERCHANT' && decodedPayload.role !== 'BUYER') ||
+    !Number.isFinite(decodedPayload.exp)
   ) {
     throw new HttpError(httpStatus.unauthorized, 'Invalid authentication token');
   }

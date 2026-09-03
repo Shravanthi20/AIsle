@@ -35,10 +35,12 @@ export class AuthService {
     const normalizedEmail = input.email.trim().toLowerCase();
     const name = input.name.trim();
 
-    if (!name || !normalizedEmail || input.password.length < 8) {
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+
+    if (!name || !isValidEmail || input.password.length < 8) {
       throw new HttpError(
         httpStatus.badRequest,
-        'Name, email, and an 8 character password are required',
+        'A valid name, email, and an 8 character password are required',
       );
     }
 
@@ -47,6 +49,14 @@ export class AuthService {
     }
 
     const role = input.role;
+
+    if (
+      role === 'MERCHANT' &&
+      (typeof input.storeName !== 'string' || !input.storeName.trim())
+    ) {
+      throw new HttpError(httpStatus.badRequest, 'Store name is required for merchant registration');
+    }
+
     const existingUser = await this.authRepository.findUserByEmail(normalizedEmail);
 
     if (existingUser) {
@@ -56,9 +66,7 @@ export class AuthService {
     const passwordHash = await hashPassword(input.password);
     const merchantStoreName =
       role === 'MERCHANT'
-        ? typeof input.storeName === 'string'
-          ? input.storeName.trim() || `${name}'s Store`
-          : `${name}'s Store`
+        ? (input.storeName as string).trim()
         : undefined;
     const user = await this.authRepository.createUser(
       {
