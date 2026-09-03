@@ -20,6 +20,27 @@ interface Product {
   status: Status;
   attributes: Attribute[];
 }
+interface ProductInsight {
+  productId: string;
+  name: string;
+  unitsSold: number;
+  revenue: number;
+  orderCount: number;
+}
+interface MerchantAgentResponse {
+  answer: string;
+  relevantProducts: Product[];
+  relevantData: {
+    totalOrders: number;
+    paidOrders: number;
+    revenue: number;
+    currency: string | null;
+    topSellingProducts: ProductInsight[];
+    lowStockProducts: Product[];
+    underperformingProducts: ProductInsight[];
+  };
+  suggestedActions: string[];
+}
 interface FormState {
   name: string;
   description: string;
@@ -108,6 +129,10 @@ export function MerchantDashboardPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [assistantQuestion, setAssistantQuestion] = useState('');
+  const [assistant, setAssistant] = useState<MerchantAgentResponse | null>(null);
+  const [assistantLoading, setAssistantLoading] = useState(false);
+  const [assistantError, setAssistantError] = useState('');
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
@@ -214,6 +239,24 @@ export function MerchantDashboardPage() {
       setError(reason instanceof Error ? reason.message : 'Could not update stock');
     }
   }
+  async function askAssistant(event: FormEvent) {
+    event.preventDefault();
+    if (!token || !assistantQuestion.trim()) return;
+    setAssistantLoading(true);
+    setAssistantError('');
+    try {
+      const result = await apiPost<MerchantAgentResponse>(
+        '/agent/merchant/chat',
+        { message: assistantQuestion },
+        token,
+      );
+      setAssistant(result);
+    } catch (reason) {
+      setAssistantError(reason instanceof Error ? reason.message : 'Could not reach the assistant');
+    } finally {
+      setAssistantLoading(false);
+    }
+  }
 
   return (
     <section className="grid gap-8">
@@ -231,6 +274,53 @@ export function MerchantDashboardPage() {
         <Metric label="Active" value={active} />
         <Metric label="Low stock" value={lowStock} />
       </div>
+      <section className="grid gap-5 border border-slate-200 bg-white p-6 shadow-sm">
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-wide text-mint">Merchant AI Assistant</p>
+          <h2 className="mt-1 text-xl font-semibold">Make a growth decision</h2>
+          <p className="mt-1 text-sm text-slate-600">Ask about products, sales, stock, or ways to improve your store.</p>
+        </div>
+        <form className="flex flex-col gap-3 sm:flex-row" onSubmit={askAssistant}>
+          <input
+            className="min-w-0 flex-1 border border-slate-300 px-3 py-2"
+            value={assistantQuestion}
+            onChange={(event) => setAssistantQuestion(event.target.value)}
+            placeholder="Which products should I promote?"
+            aria-label="Question for merchant AI assistant"
+          />
+          <button disabled={assistantLoading || !assistantQuestion.trim()} className="bg-ink px-5 py-2 text-sm font-semibold text-white disabled:bg-slate-400">
+            {assistantLoading ? 'Analyzing...' : 'Ask assistant'}
+          </button>
+        </form>
+        {assistantError ? <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{assistantError}</p> : null}
+        {assistant ? (
+          <div className="grid gap-5 border-t border-slate-200 pt-5">
+            <p className="text-slate-700">{assistant.answer}</p>
+            <div className="grid gap-3 sm:grid-cols-4">
+              <Metric label="Orders" value={assistant.relevantData.totalOrders} />
+              <Metric label="Paid orders" value={assistant.relevantData.paidOrders} />
+              <Metric label={`Revenue${assistant.relevantData.currency ? ` (${assistant.relevantData.currency})` : ''}`} value={assistant.relevantData.revenue} />
+              <Metric label="Low stock" value={assistant.relevantData.lowStockProducts.length} />
+            </div>
+            <div className="grid gap-5 md:grid-cols-2">
+              <div>
+                <h3 className="font-semibold">Relevant products</h3>
+                {assistant.relevantProducts.length ? (
+                  <ul className="mt-2 grid gap-2 text-sm text-slate-600">
+                    {assistant.relevantProducts.map((product) => <li className="border-b border-slate-100 py-2" key={product.id}>{product.name} <span className="text-slate-400">({product.currency} {product.price}, stock {product.stock})</span></li>)}
+                  </ul>
+                ) : <p className="mt-2 text-sm text-slate-500">No matching products in your catalog.</p>}
+              </div>
+              <div>
+                <h3 className="font-semibold">Suggested actions</h3>
+                <ul className="mt-2 grid gap-2 text-sm text-slate-600">
+                  {assistant.suggestedActions.map((action) => <li className="border-b border-slate-100 py-2" key={action}>{action}</li>)}
+                </ul>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </section>
       {error ? (
         <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       ) : null}

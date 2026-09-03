@@ -17,6 +17,17 @@ interface CartItemRecord {
   updated_at: Date;
 }
 
+export interface CartProductRow {
+  productId: string;
+  name: string;
+  quantity: number;
+  unitPrice: string;
+  currency: string;
+  stockAvailable: number;
+  imageUrl: string | null;
+  merchantId: string;
+}
+
 function mapCart(record: CartRecord): Cart {
   return {
     id: record.id,
@@ -63,6 +74,30 @@ export class CartRepository {
     );
 
     return mapCart(result.rows[0] as CartRecord);
+  }
+
+  async getItems(cartId: string): Promise<CartProductRow[]> {
+    const result = await pool.query<CartProductRow>(
+      `
+        SELECT ci.product_id AS "productId", p.name, ci.quantity,
+          p.price AS "unitPrice", p.currency, p.stock AS "stockAvailable",
+          p.image_url AS "imageUrl", p.merchant_id AS "merchantId"
+        FROM cart_items ci
+        JOIN products p ON p.id = ci.product_id
+        WHERE ci.cart_id = $1
+        ORDER BY ci.created_at ASC
+      `,
+      [cartId],
+    );
+    return result.rows;
+  }
+
+  async getItemQuantity(cartId: string, productId: string): Promise<number> {
+    const result = await pool.query<{ quantity: number }>(
+      'SELECT quantity FROM cart_items WHERE cart_id = $1 AND product_id = $2',
+      [cartId, productId],
+    );
+    return result.rows[0]?.quantity ?? 0;
   }
 
   async addItem(cartId: string, productId: string, quantity: number): Promise<CartItem> {

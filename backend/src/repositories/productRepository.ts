@@ -177,7 +177,7 @@ export class ProductRepository {
     const result = await pool.query<ProductRecord>(
       `
         UPDATE products
-        SET stock = $2
+        SET stock = $3
         WHERE id = $1 AND merchant_id = $2
         RETURNING id, merchant_id, name, description, category, price, currency, stock, image_url, status, created_at, updated_at
       `,
@@ -284,5 +284,31 @@ export class ProductRepository {
     );
 
     return result.rows.map(mapProduct);
+  }
+
+  async getDiscoverableProducts(): Promise<Product[]> {
+    const result = await pool.query<ProductRecord>(
+      `
+        SELECT id, merchant_id, name, description, category, price, currency, stock, image_url, status, created_at, updated_at
+        FROM products
+        WHERE status = 'ACTIVE' AND stock > 0
+        ORDER BY created_at DESC, id ASC
+      `,
+    );
+
+    return Promise.all(result.rows.map((row) => this.withAttributes(mapProduct(row))));
+  }
+
+  async getDiscoverableProductById(id: string): Promise<Product | null> {
+    const result = await pool.query<ProductRecord>(
+      `
+        SELECT id, merchant_id, name, description, category, price, currency, stock, image_url, status, created_at, updated_at
+        FROM products
+        WHERE id = $1 AND status = 'ACTIVE' AND stock > 0
+      `,
+      [id],
+    );
+
+    return result.rows[0] ? this.withAttributes(mapProduct(result.rows[0])) : null;
   }
 }

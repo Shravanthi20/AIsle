@@ -5,6 +5,8 @@ import { useAuth } from '../hooks/useAuth';
 const navItems = [
   { label: 'Merchant', to: '/merchant', role: 'MERCHANT' },
   { label: 'Buyer', to: '/buyer', role: 'BUYER' },
+  { label: 'Cart', to: '/buyer/cart', role: 'BUYER' },
+  { label: 'Orders', to: '/buyer/orders', role: 'BUYER' },
 ] as const;
 
 const fallbackRouteByRole = {

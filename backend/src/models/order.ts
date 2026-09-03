@@ -8,6 +8,9 @@ export interface Order {
   currency: string;
   status: OrderStatus;
   paymentStatus: PaymentStatus;
+  razorpayOrderId?: string | null;
+  razorpayPaymentId?: string | null;
+  razorpaySignature?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

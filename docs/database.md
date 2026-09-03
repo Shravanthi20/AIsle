@@ -113,6 +113,10 @@ orders
 
 `products` stores the merchant catalog.
 
+### AI-Readable Catalog
+
+PostgreSQL remains the source of truth for the AI-readable catalog. The backend reads `products` and `product_attributes`, then deterministically maps them to an agent-oriented product object; no duplicate product store and no LLM are used. Discovery returns only active, in-stock products. Attributes become a key/value object and `use_case` is also exposed as a `use_cases` array for later buyer-agent use.
+
 - `merchant_id` references `merchants.id`.
 - `price` and `stock` are constrained to non-negative values.
 - `status` uses the `product_status` enum: `DRAFT`, `ACTIVE`, `INACTIVE`, `ARCHIVED`.
