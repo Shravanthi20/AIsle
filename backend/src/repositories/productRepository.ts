@@ -200,14 +200,14 @@ export class ProductRepository {
         `
         UPDATE products
         SET
-          name = COALESCE($2, name),
-          description = COALESCE($3, description),
-          category = COALESCE($4, category),
-          price = COALESCE($5, price),
-          currency = COALESCE($6, currency),
-          stock = COALESCE($7, stock),
-          image_url = COALESCE($8, image_url),
-          status = COALESCE($9, status)
+          name = COALESCE($3, name),
+          description = COALESCE($4, description),
+          category = COALESCE($5, category),
+          price = COALESCE($6, price),
+          currency = COALESCE($7, currency),
+          stock = COALESCE($8, stock),
+          image_url = COALESCE($9, image_url),
+          status = COALESCE($10, status)
         WHERE id = $1 AND merchant_id = $2
         RETURNING id, merchant_id, name, description, category, price, currency, stock, image_url, status, created_at, updated_at
       `,
