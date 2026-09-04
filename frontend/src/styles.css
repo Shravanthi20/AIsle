@@ -4,9 +4,9 @@
 
 :root {
   color: #17212b;
-  background: #f7faf9;
+  background: #f4f7f5;
   font-family:
-    Inter,
+    'Trebuchet MS',
     ui-sans-serif,
     system-ui,
     -apple-system,
@@ -14,6 +14,44 @@
     'Segoe UI',
     sans-serif;
 }
+
+* { box-sizing: border-box; }
+
+::selection { background: #b6eee4; color: #17212b; }
+
+button, input, textarea, select { font: inherit; }
+
+.surface { border: 1px solid #dce7e3; background: rgba(255, 255, 255, .88); box-shadow: 0 12px 35px rgba(23, 33, 43, .06); }
+.button { border: 1px solid transparent; border-radius: 4px; cursor: pointer; padding: .72rem 1rem; font-size: .84rem; font-weight: 700; transition: transform .18s ease, box-shadow .18s ease, background .18s ease; }
+.button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 8px 18px rgba(23, 33, 43, .12); }
+.button:disabled { cursor: not-allowed; opacity: .55; }
+.button-primary { background: #17212b; color: #fff; }
+.button-secondary { border-color: #b9ccc6; background: #fff; color: #17212b; }
+.button-ghost { background: transparent; color: #37675f; }
+.button-danger { background: #a83f3f; color: #fff; }
+.eyebrow { color: #0f8f81; font-size: .68rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.section-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem; }
+.section-heading h2 { margin-top: .3rem; font-family: Georgia, serif; font-size: 1.35rem; font-weight: 500; }
+.metric-card { position: relative; overflow: hidden; padding: 1.2rem; }
+.metric-card::after { position: absolute; right: 1rem; top: 1rem; width: .45rem; height: .45rem; border-radius: 50%; background: #0f9f8f; content: ''; }
+.metric-saffron::after { background: #e99a25; }
+.metric-blue::after { background: #4389a9; }
+.metric-value { margin-top: .6rem; font-family: Georgia, serif; font-size: 1.65rem; }
+.metric-detail { margin-top: .25rem; color: #71807b; font-size: .75rem; }
+.badge { display: inline-flex; border: 1px solid; border-radius: 999px; padding: .22rem .55rem; font-size: .67rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.badge-neutral { border-color: #cbd8d4; background: #f2f6f4; color: #61716c; }
+.badge-success { border-color: #b2ded4; background: #e7f7f2; color: #147466; }
+.badge-warning { border-color: #f0d39f; background: #fff6df; color: #92621d; }
+.badge-danger { border-color: #ecc0bd; background: #fff0ef; color: #a83f3f; }
+.badge-info { border-color: #bed8e4; background: #edf7fb; color: #2c6a82; }
+.state-box { display: grid; min-height: 8rem; place-items: center; align-content: center; gap: .45rem; border: 1px dashed #c9d9d4; color: #71807b; font-size: .85rem; text-align: center; }
+.state-box strong { color: #33443f; }
+.empty-mark { display: grid; width: 2rem; height: 2rem; place-items: center; border-radius: 50%; background: #dff3ed; color: #0f8f81; font-size: 1.2rem; }
+.error-state { border-color: #e5bdb9; background: #fff8f7; color: #9b5c57; }
+.spinner { width: 1rem; height: 1rem; border: 2px solid #c9d9d4; border-top-color: #0f9f8f; border-radius: 50%; animation: spin .8s linear infinite; }
+.focus-ring:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid rgba(15, 159, 143, .28); outline-offset: 2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 
 body {
   margin: 0;

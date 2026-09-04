@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../services/apiClient';
 import type { AuditEvent } from '../types/audit';
 import type { MerchantAnalytics } from '../types/analytics';
+import { Card } from '../components/ui';
 
 type Status = 'ACTIVE' | 'INACTIVE';
 interface Attribute {
@@ -115,9 +116,9 @@ function Field({
 }
 function Metric({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="border border-slate-200 bg-white p-5">
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+    <div className="metric-card surface">
+      <p className="eyebrow">{label}</p>
+      <p className="metric-value">{value}</p>
     </div>
   );
 }
@@ -271,10 +272,10 @@ export function MerchantDashboardPage() {
   return (
     <section className="grid gap-8">
       <div>
-        <p className="text-sm font-semibold uppercase tracking-wide text-mint">
+        <p className="eyebrow">
           Merchant Dashboard
         </p>
-        <h1 className="mt-2 text-3xl font-semibold">Product catalog</h1>
+        <h1 className="mt-2 font-serif text-4xl font-medium tracking-tight">Your store, in focus.</h1>
         <p className="mt-2 text-slate-600">
           Manage the products your store makes available to buyers.
         </p>
@@ -284,15 +285,15 @@ export function MerchantDashboardPage() {
         <Metric label="Active" value={active} />
         <Metric label="Low stock" value={lowStock} />
       </div>
-      {analytics ? <section className="grid gap-5 border border-slate-200 bg-white p-6 shadow-sm">
+      {analytics ? <section className="grid gap-5">
         <div className="grid gap-3 sm:grid-cols-3">
           <Metric label={`Revenue${analytics.currency ? ` (${analytics.currency})` : ''}`} value={analytics.revenue} />
           <Metric label="Confirmed / completed orders" value={analytics.confirmedCompletedOrders} />
           <Metric label={`Average order value${analytics.currency ? ` (${analytics.currency})` : ''}`} value={analytics.averageOrderValue} />
         </div>
         <div className="grid gap-5 md:grid-cols-2">
-          <div><h2 className="text-lg font-semibold">Top products</h2>{analytics.topSellingProducts.length ? <ul className="mt-3 grid gap-2 text-sm text-slate-600">{analytics.topSellingProducts.map((item) => <li className="flex justify-between border-b border-slate-100 pb-2" key={item.productId}><span>{item.name}</span><strong>{item.quantitySold} sold</strong></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">No confirmed sales yet.</p>}</div>
-          <div><h2 className="text-lg font-semibold">Low stock products</h2>{analytics.lowStockProducts.length ? <ul className="mt-3 grid gap-2 text-sm text-slate-600">{analytics.lowStockProducts.map((item) => <li className="flex justify-between border-b border-slate-100 pb-2" key={item.productId}><span>{item.name}</span><strong>{item.stock} left</strong></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">No active products are low on stock.</p>}</div>
+          <Card className="p-5"><h2 className="text-lg font-semibold">Top products</h2>{analytics.topSellingProducts.length ? <ul className="mt-3 grid gap-2 text-sm text-slate-600">{analytics.topSellingProducts.map((item) => <li className="flex justify-between border-b border-slate-100 pb-2" key={item.productId}><span>{item.name}</span><strong>{item.quantitySold} sold</strong></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">No confirmed sales yet.</p>}</Card>
+          <Card className="p-5"><h2 className="text-lg font-semibold">Low stock products</h2>{analytics.lowStockProducts.length ? <ul className="mt-3 grid gap-2 text-sm text-slate-600">{analytics.lowStockProducts.map((item) => <li className="flex justify-between border-b border-slate-100 pb-2" key={item.productId}><span>{item.name}</span><strong>{item.stock} left</strong></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">No active products are low on stock.</p>}</Card>
         </div>
         {analytics.trends.length ? <div><h2 className="text-lg font-semibold">Sales trend</h2><p className="mt-2 text-sm text-slate-600">{analytics.trends.map((point) => `${point.date}: ${point.orders} orders, ${analytics.currency ?? ''} ${point.revenue}`).join('  |  ')}</p></div> : null}
       </section> : null}
