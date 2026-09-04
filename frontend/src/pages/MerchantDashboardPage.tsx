@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { useAuth } from '../hooks/useAuth';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../services/apiClient';
 import type { AuditEvent } from '../types/audit';
+import type { MerchantAnalytics } from '../types/analytics';
 
 type Status = 'ACTIVE' | 'INACTIVE';
 interface Attribute {
@@ -112,7 +113,7 @@ function Field({
     </label>
   );
 }
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="border border-slate-200 bg-white p-5">
       <p className="text-sm text-slate-500">{label}</p>
@@ -135,16 +136,19 @@ export function MerchantDashboardPage() {
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantError, setAssistantError] = useState('');
   const [activity, setActivity] = useState<AuditEvent[]>([]);
+  const [analytics, setAnalytics] = useState<MerchantAnalytics | null>(null);
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const [result, auditResult] = await Promise.all([
+      const [result, auditResult, analyticsResult] = await Promise.all([
         apiGet<{ products: Product[] }>('/products', token),
         apiGet<{ events: AuditEvent[] }>('/audit?limit=8', token),
+        apiGet<{ analytics: MerchantAnalytics }>('/analytics/merchant', token),
       ]);
       setProducts(result.products);
       setActivity(auditResult.events);
+      setAnalytics(analyticsResult.analytics);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load products');
     } finally {
@@ -280,6 +284,18 @@ export function MerchantDashboardPage() {
         <Metric label="Active" value={active} />
         <Metric label="Low stock" value={lowStock} />
       </div>
+      {analytics ? <section className="grid gap-5 border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Metric label={`Revenue${analytics.currency ? ` (${analytics.currency})` : ''}`} value={analytics.revenue} />
+          <Metric label="Confirmed / completed orders" value={analytics.confirmedCompletedOrders} />
+          <Metric label={`Average order value${analytics.currency ? ` (${analytics.currency})` : ''}`} value={analytics.averageOrderValue} />
+        </div>
+        <div className="grid gap-5 md:grid-cols-2">
+          <div><h2 className="text-lg font-semibold">Top products</h2>{analytics.topSellingProducts.length ? <ul className="mt-3 grid gap-2 text-sm text-slate-600">{analytics.topSellingProducts.map((item) => <li className="flex justify-between border-b border-slate-100 pb-2" key={item.productId}><span>{item.name}</span><strong>{item.quantitySold} sold</strong></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">No confirmed sales yet.</p>}</div>
+          <div><h2 className="text-lg font-semibold">Low stock products</h2>{analytics.lowStockProducts.length ? <ul className="mt-3 grid gap-2 text-sm text-slate-600">{analytics.lowStockProducts.map((item) => <li className="flex justify-between border-b border-slate-100 pb-2" key={item.productId}><span>{item.name}</span><strong>{item.stock} left</strong></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">No active products are low on stock.</p>}</div>
+        </div>
+        {analytics.trends.length ? <div><h2 className="text-lg font-semibold">Sales trend</h2><p className="mt-2 text-sm text-slate-600">{analytics.trends.map((point) => `${point.date}: ${point.orders} orders, ${analytics.currency ?? ''} ${point.revenue}`).join('  |  ')}</p></div> : null}
+      </section> : null}
       <section className="grid gap-5 border border-slate-200 bg-white p-6 shadow-sm">
         <div>
           <p className="text-sm font-semibold uppercase tracking-wide text-mint">Merchant AI Assistant</p>

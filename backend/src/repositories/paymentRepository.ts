@@ -53,12 +53,13 @@ export class PaymentRepository {
     return result.rows[0] ? mapPaymentOrder(result.rows[0]) : null;
   }
 
-  async attachRazorpayOrder(id: string, razorpayOrderId: string): Promise<void> {
-    await pool.query(
+  async attachRazorpayOrder(id: string, razorpayOrderId: string): Promise<boolean> {
+    const result = await pool.query(
       `UPDATE orders SET razorpay_order_id = $2
-       WHERE id = $1 AND payment_status IN ('PENDING', 'FAILED')`,
+       WHERE id = $1 AND payment_status IN ('PENDING', 'FAILED') AND razorpay_order_id IS NULL`,
       [id, razorpayOrderId],
     );
+    return (result.rowCount ?? 0) > 0;
   }
 
   async markPaid(id: string, razorpayPaymentId: string, razorpaySignature: string): Promise<PaymentOrder | null> {

@@ -56,13 +56,17 @@ export class BuyerAgentService {
     const context = contexts.get(user.id) ?? { products: [] };
 
     if (action?.type === 'view_cart' || /\b(show|view)\s+(my\s+)?cart\b/i.test(text)) {
-      const cart = await this.viewCart.execute(user);
-      return { message: cart.items.length ? `Your cart total is ${cart.currency} ${Number(cart.subtotal).toLocaleString('en-IN')}.` : 'Your cart is empty.', state: 'READY_FOR_CHECKOUT', products: context.products, actions: cart.items.length ? [{ type: 'prepare_checkout', label: 'Prepare checkout' }] : [], cart };
+      try {
+        const cart = await this.viewCart.execute(user);
+        return { message: cart.items.length ? `Your cart total is ${cart.currency} ${Number(cart.subtotal).toLocaleString('en-IN')}.` : 'Your cart is empty.', state: 'READY_FOR_CHECKOUT', products: context.products, actions: cart.items.length ? [{ type: 'prepare_checkout', label: 'Prepare checkout' }] : [], cart };
+      } catch (error) { return this.failureResponse(context, error, 'cart'); }
     }
 
     if (action?.type === 'prepare_checkout' || /\b(checkout|buy now)\b/i.test(text)) {
-      const checkout = await this.checkout.execute(user);
-      return { message: checkout.message, state: checkout.items.length ? checkout.decision === 'DENY' ? 'ERROR' : checkout.decision === 'REQUIRES_APPROVAL' ? 'WAITING_FOR_APPROVAL' : 'READY_FOR_CHECKOUT' : 'ERROR', products: context.products, actions: checkout.items.length && checkout.decision !== 'DENY' ? [{ type: 'prepare_checkout', label: 'Review checkout' }] : [], cart: checkout };
+      try {
+        const checkout = await this.checkout.execute(user);
+        return { message: checkout.message, state: checkout.items.length ? checkout.decision === 'DENY' ? 'ERROR' : checkout.decision === 'REQUIRES_APPROVAL' ? 'WAITING_FOR_APPROVAL' : 'READY_FOR_CHECKOUT' : 'ERROR', products: context.products, actions: checkout.items.length && checkout.decision !== 'DENY' ? [{ type: 'prepare_checkout', label: 'Review checkout' }] : [], cart: checkout };
+      } catch (error) { return this.failureResponse(context, error, 'checkout'); }
     }
 
     const productId = action?.productId ?? this.selectedProduct(text, context.products);
@@ -85,9 +89,11 @@ export class BuyerAgentService {
     }
     if (action?.type === 'add_to_cart' || productId && /\b(add|put)\b.*\bcart\b/i.test(text)) {
       if (!productId) return this.selectionResponse(context.products);
-      const cart = await this.add.execute(user, productId, action?.quantity ?? 1);
-      const product = await this.details.execute(productId);
-      return { message: `${product.name} was added to your cart.`, state: 'READY_FOR_CHECKOUT', products: context.products, actions: [{ type: 'prepare_checkout', label: 'Prepare checkout' }], cart };
+      try {
+        const cart = await this.add.execute(user, productId, action?.quantity ?? 1);
+        const product = await this.details.execute(productId);
+        return { message: `${product.name} was added to your cart.`, state: 'READY_FOR_CHECKOUT', products: context.products, actions: [{ type: 'prepare_checkout', label: 'Prepare checkout' }], cart };
+      } catch (error) { return this.failureResponse(context, error, 'product'); }
     }
 
     if (action?.type === 'select_product' || /\b(details|tell me more|show)\b/i.test(text) && productId) {
@@ -99,8 +105,12 @@ export class BuyerAgentService {
     }
 
     const intent = this.intentProvider.understand(text);
-    const found = await this.search.execute({ query: text, maxPrice: intent.maxPrice, attributes: intent.attributes });
-    const recommendations = await this.recommend.execute(text);
+    let found: AgentCatalogProduct[];
+    let recommendations: Recommendation[];
+    try {
+      found = await this.search.execute({ query: text, maxPrice: intent.maxPrice, attributes: intent.attributes });
+      recommendations = await this.recommend.execute(text);
+    } catch (error) { return this.failureResponse(context, error, 'catalog'); }
     await this.audits.log({ user, buyerId: user.id, actorType: 'BUYER_AGENT', action: 'PRODUCT_RECOMMENDATIONS', entityType: 'PRODUCT', context: { productIds: recommendations.map((recommendation) => recommendation.product_id) }, decision: 'RECOMMENDED', explanation: recommendations.map((recommendation) => recommendation.reason).join(' ') || 'No matching recommendations were returned.' });
     const products = this.rankSearchResults(found, recommendations);
     context.products = products;
@@ -131,5 +141,19 @@ export class BuyerAgentService {
 
   private selectionResponse(products: AgentCatalogProduct[]): BuyerAgentResponse {
     return { message: 'Please select one of the products before adding it to your cart.', state: 'WAITING_FOR_SELECTION', products, actions: productActions(products) };
+  }
+
+  private failureResponse(context: AgentContext, error: unknown, operation: 'cart' | 'checkout' | 'product' | 'catalog'): BuyerAgentResponse {
+    const detail = error instanceof Error ? error.message : '';
+    const message = operation === 'checkout' && /stock|active|available/i.test(detail)
+      ? 'Checkout could not continue because a product is no longer available or has insufficient stock. Please review your cart.'
+      : operation === 'checkout'
+        ? 'Checkout could not be completed. Please review your cart and try again.'
+        : operation === 'product'
+          ? 'That product could not be added because its availability changed. Please choose another available product.'
+          : operation === 'catalog'
+            ? 'The catalog is temporarily unavailable. Please try again shortly.'
+            : 'I could not load your cart right now. Please try again shortly.';
+    return { message, state: 'ERROR', products: context.products, actions: [] };
   }
 }

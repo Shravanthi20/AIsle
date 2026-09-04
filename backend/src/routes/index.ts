@@ -15,6 +15,8 @@ import { agentCommerceRoutes } from '../agents/agentCommerceRoutes.js';
 import { policyRoutes } from '../policy/policyRoutes.js';
 import { approvalRoutes } from '../policy/approvalRoutes.js';
 import { auditRoutes } from '../audit/auditRoutes.js';
+import { analyticsRoutes } from '../analytics/analyticsRoutes.js';
+import { failureRecoveryRoutes } from '../recovery/failureRecoveryRoutes.js';
 
 export const apiRoutes = Router();
 
@@ -33,3 +35,5 @@ apiRoutes.use(agentCommerceRoutes);
 apiRoutes.use(policyRoutes);
 apiRoutes.use(approvalRoutes);
 apiRoutes.use(auditRoutes);
+apiRoutes.use(analyticsRoutes);
+apiRoutes.use(failureRecoveryRoutes);

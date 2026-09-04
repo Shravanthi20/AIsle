@@ -57,6 +57,7 @@ export class OrderService {
       await this.audits.log({ user, buyerId: user.id, merchantId: result.order.merchantId, actorType: 'USER', action: 'CHECKOUT_CREATED', entityType: 'ORDER', entityId: result.order.id, context: { amount: Number(result.order.totalAmount), currency: result.order.currency, approvalId: result.order.approvalId ?? null }, decision: 'ALLOW', explanation: 'Checkout created after policy evaluation and approval validation.' });
       return { ...result.order, items: result.items };
     } catch (error) {
+      await this.audits.log({ user, buyerId: user.id, actorType: 'USER', action: error instanceof CheckoutConflictError && /stock|active/i.test(error.message) ? 'STOCK_CONFLICT' : /approval|total/i.test(error instanceof Error ? error.message : '') ? 'STALE_APPROVAL' : 'CHECKOUT_FAILED', entityType: 'CHECKOUT', context: { approvalId: typeof approvalId === 'string' ? approvalId : null }, decision: 'FAILED', explanation: error instanceof Error ? error.message : 'Checkout could not be completed.' });
       if (error instanceof CheckoutConflictError) throw new HttpError(httpStatus.conflict, error.message);
       throw error;
     }

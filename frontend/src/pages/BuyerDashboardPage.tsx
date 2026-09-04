@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { apiGet, apiPost } from '../services/apiClient';
 import type { AuditEvent } from '../types/audit';
+import type { BuyerAnalytics, BuyerOrderAnalytics } from '../types/analytics';
 
 interface Product { product_id: string; name: string; description: string | null; category: string; price: number; currency: string; availability: string; attributes: Record<string, string>; }
 interface Cart { items: Array<{ productId: string; name: string; quantity: number; subtotal: string }>; subtotal: string; currency: string; }
@@ -18,11 +19,16 @@ export function BuyerDashboardPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [activity, setActivity] = useState<AuditEvent[]>([]);
+  const [analytics, setAnalytics] = useState<BuyerAnalytics | null>(null);
+  const [recentOrders, setRecentOrders] = useState<BuyerOrderAnalytics[]>([]);
 
   useEffect(() => {
     if (!token) return;
-    void apiGet<{ events: AuditEvent[] }>('/audit?limit=8', token)
-      .then((result) => setActivity(result.events))
+    void Promise.all([
+      apiGet<{ events: AuditEvent[] }>('/audit?limit=8', token),
+      apiGet<{ analytics: BuyerAnalytics }>('/analytics/buyer', token),
+      apiGet<{ orders: BuyerOrderAnalytics[] }>('/analytics/buyer/orders', token),
+    ]).then(([auditResult, analyticsResult, ordersResult]) => { setActivity(auditResult.events); setAnalytics(analyticsResult.analytics); setRecentOrders(ordersResult.orders.slice(0, 5)); })
       .catch(() => undefined);
   }, [token]);
 
@@ -51,7 +57,7 @@ export function BuyerDashboardPage() {
       {error ? <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
       <form onSubmit={submit} className="flex gap-3 border border-slate-200 bg-white p-4 shadow-sm"><input className="min-w-0 flex-1 border border-slate-300 px-4 py-3" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask for a product, details, or cart help" disabled={loading} /><button className="bg-ink px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-400" disabled={loading || !message.trim()}>Send</button></form>
     </div>
-    <aside className="grid h-fit gap-6"><div className="border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Cart summary</h2>{!cart?.items.length ? <p className="mt-3 text-sm text-slate-500">Ask me to show your cart.</p> : <><div className="mt-4 grid gap-3">{cart.items.map((item) => <div className="flex justify-between gap-3 text-sm" key={item.productId}><span>{item.name} × {item.quantity}</span><strong>{cart.currency} {Number(item.subtotal).toLocaleString('en-IN')}</strong></div>)}</div><p className="mt-5 flex justify-between border-t pt-4"><span>Total</span><strong>{cart.currency} {Number(cart.subtotal).toLocaleString('en-IN')}</strong></p><Link className="mt-4 block text-sm font-semibold text-mint" to="/buyer/cart">Open cart</Link></>}</div><Activity events={activity} /></aside>
+    <aside className="grid h-fit gap-6"><div className="border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Purchase summary</h2>{analytics ? <div className="mt-4 grid gap-2 text-sm"><p className="flex justify-between"><span>Total spending</span><strong>{analytics.currency ?? ''} {analytics.totalSpending}</strong></p><p className="flex justify-between"><span>Orders</span><strong>{analytics.totalOrders}</strong></p>{analytics.mostPurchasedProducts[0] ? <p className="flex justify-between"><span>Most purchased</span><strong>{analytics.mostPurchasedProducts[0].name}</strong></p> : null}</div> : <p className="mt-3 text-sm text-slate-500">Analytics unavailable.</p>}</div><div className="border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Recent purchases</h2>{recentOrders.length ? <div className="mt-3 grid gap-3 text-sm">{recentOrders.map((order) => <div className="flex justify-between gap-3 border-b border-slate-100 pb-2" key={order.id}><span>{new Date(order.createdAt).toLocaleDateString()}</span><strong>{order.currency} {order.totalAmount}</strong></div>)}</div> : <p className="mt-3 text-sm text-slate-500">No purchases yet.</p>}</div><div className="border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Cart summary</h2>{!cart?.items.length ? <p className="mt-3 text-sm text-slate-500">Ask me to show your cart.</p> : <><div className="mt-4 grid gap-3">{cart.items.map((item) => <div className="flex justify-between gap-3 text-sm" key={item.productId}><span>{item.name} × {item.quantity}</span><strong>{cart.currency} {Number(item.subtotal).toLocaleString('en-IN')}</strong></div>)}</div><p className="mt-5 flex justify-between border-t pt-4"><span>Total</span><strong>{cart.currency} {Number(cart.subtotal).toLocaleString('en-IN')}</strong></p><Link className="mt-4 block text-sm font-semibold text-mint" to="/buyer/cart">Open cart</Link></>}</div><Activity events={activity} /></aside>
   </section>;
 }
 

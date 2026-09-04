@@ -1,0 +1,5 @@
+export interface TrendPoint { date: string; orders: number; revenue: string; }
+export interface ProductSales { productId: string; name: string; category: string; status: string; stock: number; price: string; currency: string; quantitySold: number; revenue: string; }
+export interface MerchantAnalytics { totalOrders: number; confirmedCompletedOrders: number; revenue: string; averageOrderValue: string; currency: string | null; topSellingProducts: ProductSales[]; lowStockProducts: ProductSales[]; inactiveProducts: ProductSales[]; trends: TrendPoint[]; }
+export interface BuyerAnalytics { totalOrders: number; totalSpending: string; currency: string | null; mostPurchasedProducts: Array<{ productId: string; name: string; quantityPurchased: number; spending: string; currency: string }>; trends: TrendPoint[]; }
+export interface BuyerOrderAnalytics { id: string; merchantId: string; totalAmount: string; currency: string; status: string; paymentStatus: string; createdAt: string; }

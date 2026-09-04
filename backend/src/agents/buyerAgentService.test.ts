@@ -53,3 +53,18 @@ test('agent delegates add-to-cart using the authenticated buyer', async () => {
   await service.chat(user, 'add the first one to my cart', { type: 'add_to_cart', productId: product.product_id });
   assert.equal(receivedUser, user);
 });
+
+test('agent reports checkout failures without inventing an order or payment success', async () => {
+  const service = new BuyerAgentService(
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    {} as never,
+    { execute: async () => { throw new Error('Requested quantity exceeds available stock'); } } as never,
+  );
+  const response = await service.chat(user, 'checkout now');
+  assert.equal(response.state, 'ERROR');
+  assert.match(response.message, /no longer available|insufficient stock/i);
+  assert.doesNotMatch(response.message, /paid|confirmed|successful/i);
+});

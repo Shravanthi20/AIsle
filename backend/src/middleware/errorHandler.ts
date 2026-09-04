@@ -11,6 +11,14 @@ export const errorHandler: ErrorRequestHandler = (error, _request, response, _ne
     return;
   }
 
+  if (error instanceof SyntaxError && 'body' in error) {
+    response.status(httpStatus.badRequest).json({
+      status: 'error',
+      message: 'Malformed JSON body',
+    });
+    return;
+  }
+
   console.error(error);
 
   response.status(httpStatus.internalServerError).json({
