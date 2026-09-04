@@ -11,6 +11,10 @@ import { orderRoutes } from './orderRoutes.js';
 import { paymentRoutes } from './paymentRoutes.js';
 import { buyerAgentRoutes } from './buyerAgentRoutes.js';
 import { merchantAgentRoutes } from './merchantAgentRoutes.js';
+import { agentCommerceRoutes } from '../agents/agentCommerceRoutes.js';
+import { policyRoutes } from '../policy/policyRoutes.js';
+import { approvalRoutes } from '../policy/approvalRoutes.js';
+import { auditRoutes } from '../audit/auditRoutes.js';
 
 export const apiRoutes = Router();
 
@@ -25,3 +29,7 @@ apiRoutes.use(orderRoutes);
 apiRoutes.use(paymentRoutes);
 apiRoutes.use(buyerAgentRoutes);
 apiRoutes.use(merchantAgentRoutes);
+apiRoutes.use(agentCommerceRoutes);
+apiRoutes.use(policyRoutes);
+apiRoutes.use(approvalRoutes);
+apiRoutes.use(auditRoutes);

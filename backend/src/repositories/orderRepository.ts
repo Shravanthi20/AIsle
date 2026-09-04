@@ -6,6 +6,7 @@ interface OrderRecord {
   id: string;
   buyer_id: string;
   merchant_id: string;
+  approval_id: string | null;
   total_amount: string;
   currency: string;
   status: OrderStatus;
@@ -61,6 +62,7 @@ function mapOrder(record: OrderRecord): Order {
     id: record.id,
     buyerId: record.buyer_id,
     merchantId: record.merchant_id,
+    approvalId: record.approval_id,
     totalAmount: record.total_amount,
     currency: record.currency,
     status: record.status,
@@ -85,7 +87,7 @@ function mapOrderItem(record: OrderItemRecord): OrderItem {
 }
 
 export class OrderRepository {
-  async checkout(buyerId: string): Promise<CheckoutResult | null> {
+  async checkout(buyerId: string, approvalId?: string): Promise<CheckoutResult | null> {
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -140,13 +142,23 @@ export class OrderRepository {
       const totalAmount = items
         .reduce((total, item) => total + Number(item.subtotal), 0)
         .toFixed(2);
+      if (approvalId) {
+        const approval = await client.query(
+          `UPDATE approvals SET status = 'CONSUMED'
+           WHERE id = $1 AND buyer_id = $2 AND status = 'APPROVED'
+             AND expires_at > now() AND amount = $3 AND currency = $4
+           RETURNING id`,
+          [approvalId, buyerId, totalAmount, currency],
+        );
+        if (!approval.rows.length) throw new CheckoutConflictError('Approval is invalid, expired, already used, or does not match the current total');
+      }
       const orderResult = await client.query<OrderRecord>(
         `
-          INSERT INTO orders (buyer_id, merchant_id, total_amount, currency, status, payment_status)
-          VALUES ($1, $2, $3, $4, 'PENDING', 'PENDING')
-          RETURNING id, buyer_id, merchant_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
+          INSERT INTO orders (buyer_id, merchant_id, total_amount, currency, status, payment_status, approval_id)
+          VALUES ($1, $2, $3, $4, 'PENDING', 'PENDING', $5)
+          RETURNING id, buyer_id, merchant_id, approval_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
         `,
-        [buyerId, first.merchant_id, totalAmount, currency],
+        [buyerId, first.merchant_id, totalAmount, currency, approvalId ?? null],
       );
       const order = mapOrder(orderResult.rows[0] as OrderRecord);
       for (const item of items) {
@@ -174,7 +186,7 @@ export class OrderRepository {
         `
           INSERT INTO orders (buyer_id, merchant_id, total_amount, currency)
           VALUES ($1, $2, $3, $4)
-          RETURNING id, buyer_id, merchant_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
+          RETURNING id, buyer_id, merchant_id, approval_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
         `,
         [input.buyerId, input.merchantId, input.totalAmount, input.currency ?? 'INR'],
       );
@@ -203,7 +215,7 @@ export class OrderRepository {
   async getOrderById(id: string): Promise<Order | null> {
     const result = await pool.query<OrderRecord>(
       `
-        SELECT id, buyer_id, merchant_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
+        SELECT id, buyer_id, merchant_id, approval_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
         FROM orders
         WHERE id = $1
       `,
@@ -230,7 +242,7 @@ export class OrderRepository {
   async getOrdersByBuyer(buyerId: string): Promise<Order[]> {
     const result = await pool.query<OrderRecord>(
       `
-        SELECT id, buyer_id, merchant_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
+        SELECT id, buyer_id, merchant_id, approval_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
         FROM orders
         WHERE buyer_id = $1
         ORDER BY created_at DESC
@@ -244,7 +256,7 @@ export class OrderRepository {
   async getOrdersByMerchant(merchantId: string): Promise<Order[]> {
     const result = await pool.query<OrderRecord>(
       `
-        SELECT id, buyer_id, merchant_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
+        SELECT id, buyer_id, merchant_id, approval_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
         FROM orders
         WHERE merchant_id = $1
         ORDER BY created_at DESC
@@ -261,7 +273,7 @@ export class OrderRepository {
         UPDATE orders
         SET status = $2
         WHERE id = $1
-        RETURNING id, buyer_id, merchant_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
+        RETURNING id, buyer_id, merchant_id, approval_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
       `,
       [id, status],
     );
@@ -275,7 +287,7 @@ export class OrderRepository {
         UPDATE orders
         SET payment_status = $2
         WHERE id = $1
-        RETURNING id, buyer_id, merchant_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
+        RETURNING id, buyer_id, merchant_id, approval_id, total_amount, currency, status, payment_status, razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
       `,
       [id, paymentStatus],
     );

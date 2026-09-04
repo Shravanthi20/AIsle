@@ -6,6 +6,7 @@ interface PaymentOrderRecord {
   id: string;
   buyer_id: string;
   merchant_id: string;
+  approval_id: string | null;
   total_amount: string;
   currency: string;
   status: OrderStatus;
@@ -28,6 +29,7 @@ function mapPaymentOrder(record: PaymentOrderRecord): PaymentOrder {
     id: record.id,
     buyerId: record.buyer_id,
     merchantId: record.merchant_id,
+    approvalId: record.approval_id,
     totalAmount: record.total_amount,
     currency: record.currency,
     status: record.status,
@@ -43,7 +45,7 @@ function mapPaymentOrder(record: PaymentOrderRecord): PaymentOrder {
 export class PaymentRepository {
   async getPaymentOrder(id: string, buyerId: string): Promise<PaymentOrder | null> {
     const result = await pool.query<PaymentOrderRecord>(
-      `SELECT id, buyer_id, merchant_id, total_amount, currency, status, payment_status,
+      `SELECT id, buyer_id, merchant_id, approval_id, total_amount, currency, status, payment_status,
         razorpay_order_id, razorpay_payment_id, razorpay_signature, created_at, updated_at
        FROM orders WHERE id = $1 AND buyer_id = $2`,
       [id, buyerId],

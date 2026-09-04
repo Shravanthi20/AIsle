@@ -5,6 +5,7 @@ import type { Product } from '../models/product.js';
 import type { AuthenticatedUser } from '../types/auth.js';
 import type { MerchantAnalytics, ProductPerformance } from '../types/merchantAnalytics.js';
 import { HttpError, httpStatus } from '../utils/http.js';
+import { AuditService } from '../audit/auditService.js';
 
 export interface MerchantAgentResponse {
   answer: string;
@@ -18,11 +19,13 @@ export class MerchantAgentService {
     private readonly analytics = new MerchantAnalyticsTool(),
     private readonly products = new MerchantProductsTool(),
     private readonly performance = new ProductPerformanceTool(),
+    private readonly audits = new AuditService(),
   ) {}
 
   async chat(user: AuthenticatedUser, message: string): Promise<MerchantAgentResponse> {
     if (user.role !== 'MERCHANT') throw new HttpError(httpStatus.forbidden, 'Merchant access required');
     if (typeof message !== 'string' || !message.trim()) throw new HttpError(httpStatus.badRequest, 'Message is required');
+    await this.audits.log({ user, actorType: 'MERCHANT_AGENT', action: 'AGENT_REQUEST', entityType: 'MERCHANT_AGENT', context: { message: message.trim() }, explanation: 'Merchant agent received a request.' });
     const text = message.trim().toLowerCase();
     const data = await this.analytics.execute(user);
     const catalog = await this.products.execute(user);
@@ -39,6 +42,7 @@ export class MerchantAgentService {
       suggestedActions,
     };
   }
+
 
   private relevantProducts(products: Product[], data: MerchantAnalytics, performance: ProductPerformance[], text: string) {
     const requested = /low stock|stock/.test(text)

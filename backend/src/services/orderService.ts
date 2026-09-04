@@ -3,12 +3,18 @@ import { CheckoutConflictError, OrderRepository, type CheckoutItem } from '../re
 import { ProductRepository } from '../repositories/productRepository.js';
 import type { AuthenticatedUser } from '../types/auth.js';
 import { HttpError, httpStatus } from '../utils/http.js';
+import { CartService } from './cartService.js';
+import { PolicyService } from '../policy/policyService.js';
+import { AuditService } from '../audit/auditService.js';
 
 export class OrderService {
   constructor(
     private readonly orders = new OrderRepository(),
     private readonly merchants = new MerchantRepository(),
     private readonly products = new ProductRepository(),
+    private readonly cart = new CartService(),
+    private readonly policies = new PolicyService(),
+    private readonly audits = new AuditService(),
   ) {}
 
   private async merchantId(user: AuthenticatedUser) {
@@ -36,11 +42,19 @@ export class OrderService {
     return { ...order, items: enrichedItems };
   }
 
-  async checkout(user: AuthenticatedUser) {
+  async checkout(user: AuthenticatedUser, approvalId?: unknown) {
     if (user.role !== 'BUYER') throw new HttpError(httpStatus.forbidden, 'Buyer access required');
+    if (approvalId !== undefined && (typeof approvalId !== 'string' || !approvalId.trim())) throw new HttpError(httpStatus.badRequest, 'Approval ID is invalid');
+    const summary = await this.cart.get(user);
+    if (!summary.items.length) throw new HttpError(httpStatus.conflict, 'Your cart is empty');
+    const merchantIds = [...new Set(summary.items.map((item) => item.merchantId))];
+    const evaluation = await this.policies.evaluate(user, 'PURCHASE', Number(summary.subtotal), summary.currency, merchantIds.length === 1 ? merchantIds[0] : undefined);
+    if (evaluation.decision === 'DENY') throw new HttpError(httpStatus.forbidden, evaluation.reason ?? 'Purchase is blocked by your policy');
+    if (evaluation.decision === 'REQUIRES_APPROVAL' && !approvalId) throw new HttpError(httpStatus.conflict, evaluation.reason ?? 'Approval is required before checkout');
     try {
-      const result = await this.orders.checkout(user.id);
+      const result = await this.orders.checkout(user.id, approvalId as string | undefined);
       if (!result) throw new HttpError(httpStatus.conflict, 'Your cart is empty');
+      await this.audits.log({ user, buyerId: user.id, merchantId: result.order.merchantId, actorType: 'USER', action: 'CHECKOUT_CREATED', entityType: 'ORDER', entityId: result.order.id, context: { amount: Number(result.order.totalAmount), currency: result.order.currency, approvalId: result.order.approvalId ?? null }, decision: 'ALLOW', explanation: 'Checkout created after policy evaluation and approval validation.' });
       return { ...result.order, items: result.items };
     } catch (error) {
       if (error instanceof CheckoutConflictError) throw new HttpError(httpStatus.conflict, error.message);

@@ -5,6 +5,8 @@ import { env } from '../config/env.js';
 import { PaymentRepository, type PaymentOrder } from '../repositories/paymentRepository.js';
 import type { AuthenticatedUser } from '../types/auth.js';
 import { HttpError, httpStatus } from '../utils/http.js';
+import { PolicyService } from '../policy/policyService.js';
+import { AuditService } from '../audit/auditService.js';
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -33,7 +35,7 @@ function amountInSubunits(total: string): number {
 }
 
 export class PaymentService {
-  constructor(private readonly payments = new PaymentRepository()) {}
+  constructor(private readonly payments = new PaymentRepository(), private readonly policies = new PolicyService(), private readonly audits = new AuditService()) {}
 
   private razorpay() {
     if (!env.razorpayKeyId || !env.razorpayKeySecret) {
@@ -61,7 +63,12 @@ export class PaymentService {
     if (order.status !== 'PENDING' || !['PENDING', 'FAILED'].includes(order.paymentStatus)) {
       throw new HttpError(httpStatus.conflict, 'Order is not eligible for payment');
     }
+    if (!order.approvalId) {
+      const evaluation = await this.policies.evaluate(user, 'PURCHASE', Number(order.totalAmount), order.currency, order.merchantId);
+      if (evaluation.decision !== 'ALLOW') throw new HttpError(httpStatus.conflict, evaluation.reason ?? 'Explicit approval is required before payment');
+    }
     if (order.paymentStatus === 'PENDING' && order.razorpayOrderId) {
+      await this.audits.log({ user, buyerId: user.id, merchantId: order.merchantId, actorType: 'USER', action: 'PAYMENT_ORDER_CREATED', entityType: 'ORDER', entityId: order.id, context: { amount: Number(order.totalAmount), currency: order.currency }, explanation: 'Existing Razorpay test order returned for the persisted order total.' });
       return this.checkoutDetails(order);
     }
 
@@ -71,6 +78,7 @@ export class PaymentService {
       receipt: order.id,
     });
     await this.payments.attachRazorpayOrder(order.id, razorpayOrder.id);
+    await this.audits.log({ user, buyerId: user.id, merchantId: order.merchantId, actorType: 'USER', action: 'PAYMENT_ORDER_CREATED', entityType: 'ORDER', entityId: order.id, context: { amount: Number(order.totalAmount), currency: order.currency }, explanation: 'Razorpay test order created from the persisted backend order total.' });
     return {
       keyId: env.razorpayKeyId,
       razorpayOrderId: razorpayOrder.id,
@@ -107,6 +115,7 @@ export class PaymentService {
     }
 
     const updated = await this.payments.markPaid(order.id, razorpayPaymentId, razorpaySignature);
+    await this.audits.log({ user, buyerId: user.id, merchantId: order.merchantId, actorType: 'USER', action: 'PAYMENT_VERIFIED', entityType: 'ORDER', entityId: order.id, context: { razorpayOrderId }, decision: 'PAID', explanation: 'Payment was marked paid only after Razorpay signature verification.' });
     return { order: updated ?? await this.payments.getPaymentOrder(order.id, user.id) };
   }
 
@@ -115,6 +124,7 @@ export class PaymentService {
     const razorpayOrderId = requiredString(body.razorpayOrderId, 'razorpayOrderId');
     const order = await this.payments.markFailed(orderId, user.id, razorpayOrderId);
     if (!order) throw new HttpError(httpStatus.notFound, 'Order not found');
+    await this.audits.log({ user, buyerId: user.id, merchantId: order.merchantId, actorType: 'USER', action: 'PAYMENT_FAILED', entityType: 'ORDER', entityId: order.id, context: { razorpayOrderId }, decision: 'FAILED', explanation: 'Payment failure was recorded for the buyer-owned order.' });
     return { order };
   }
 }

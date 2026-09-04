@@ -4,6 +4,7 @@ export interface Order {
   id: string;
   buyerId: string;
   merchantId: string;
+  approvalId?: string | null;
   totalAmount: string;
   currency: string;
   status: OrderStatus;

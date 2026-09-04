@@ -1,0 +1,15 @@
+import { pool } from '../database/db.js';
+import type { Approval, ApprovalStatus } from '../types/approval.js';
+import type { PolicyAction } from '../types/policy.js';
+
+interface ApprovalRecord { id: string; buyer_id: string; action: PolicyAction; amount: string; currency: string; cart_snapshot: unknown; status: ApprovalStatus; expires_at: Date; approved_at: Date | null; rejected_at: Date | null; created_at: Date; updated_at: Date }
+function map(record: ApprovalRecord): Approval { return { id: record.id, buyerId: record.buyer_id, action: record.action, amount: Number(record.amount), currency: record.currency, cartSnapshot: record.cart_snapshot, status: record.status, expiresAt: record.expires_at, approvedAt: record.approved_at, rejectedAt: record.rejected_at, createdAt: record.created_at, updatedAt: record.updated_at }; }
+const fields = 'id, buyer_id, action, amount, currency, cart_snapshot, status, expires_at, approved_at, rejected_at, created_at, updated_at';
+
+export class ApprovalRepository {
+  async create(input: { buyerId: string; action: PolicyAction; amount: number; currency: string; cartSnapshot: unknown; expiresAt: Date }): Promise<Approval> { const result = await pool.query<ApprovalRecord>(`INSERT INTO approvals (buyer_id, action, amount, currency, cart_snapshot, expires_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING ${fields}`, [input.buyerId, input.action, input.amount, input.currency, JSON.stringify(input.cartSnapshot), input.expiresAt]); return map(result.rows[0] as ApprovalRecord); }
+  async listByBuyer(buyerId: string): Promise<Approval[]> { await pool.query(`UPDATE approvals SET status = 'EXPIRED' WHERE buyer_id = $1 AND status IN ('PENDING', 'APPROVED') AND expires_at <= now()`, [buyerId]); const result = await pool.query<ApprovalRecord>(`SELECT ${fields} FROM approvals WHERE buyer_id = $1 ORDER BY created_at DESC`, [buyerId]); return result.rows.map(map); }
+  async getById(id: string, buyerId?: string): Promise<Approval | null> { const result = await pool.query<ApprovalRecord>(`SELECT ${fields} FROM approvals WHERE id = $1 AND ($2::uuid IS NULL OR buyer_id = $2)`, [id, buyerId ?? null]); return result.rows[0] ? map(result.rows[0]) : null; }
+  async decide(id: string, buyerId: string, status: 'APPROVED' | 'REJECTED'): Promise<Approval | null> { const result = await pool.query<ApprovalRecord>(`UPDATE approvals SET status = $3, approved_at = CASE WHEN $3 = 'APPROVED' THEN now() ELSE approved_at END, rejected_at = CASE WHEN $3 = 'REJECTED' THEN now() ELSE rejected_at END WHERE id = $1 AND buyer_id = $2 AND status = 'PENDING' AND expires_at > now() RETURNING ${fields}`, [id, buyerId, status]); return result.rows[0] ? map(result.rows[0]) : null; }
+  async consumeForCheckout(id: string, buyerId: string, amount: number, currency: string): Promise<boolean> { const result = await pool.query(`UPDATE approvals SET status = 'CONSUMED' WHERE id = $1 AND buyer_id = $2 AND status = 'APPROVED' AND expires_at > now() AND amount = $3 AND currency = $4`, [id, buyerId, amount, currency]); return (result.rowCount ?? 0) > 0; }
+}

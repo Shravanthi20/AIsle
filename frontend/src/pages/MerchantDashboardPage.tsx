@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../services/apiClient';
+import type { AuditEvent } from '../types/audit';
 
 type Status = 'ACTIVE' | 'INACTIVE';
 interface Attribute {
@@ -133,12 +134,17 @@ export function MerchantDashboardPage() {
   const [assistant, setAssistant] = useState<MerchantAgentResponse | null>(null);
   const [assistantLoading, setAssistantLoading] = useState(false);
   const [assistantError, setAssistantError] = useState('');
+  const [activity, setActivity] = useState<AuditEvent[]>([]);
   const load = useCallback(async () => {
     if (!token) return;
     setLoading(true);
     try {
-      const result = await apiGet<{ products: Product[] }>('/products', token);
+      const [result, auditResult] = await Promise.all([
+        apiGet<{ products: Product[] }>('/products', token),
+        apiGet<{ events: AuditEvent[] }>('/audit?limit=8', token),
+      ]);
       setProducts(result.products);
+      setActivity(auditResult.events);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not load products');
     } finally {
@@ -320,6 +326,10 @@ export function MerchantDashboardPage() {
             </div>
           </div>
         ) : null}
+      </section>
+      <section className="border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-xl font-semibold">Recent activity</h2>
+        {activity.length ? <div className="mt-4 grid gap-3">{activity.map((event) => <div className="border-b border-slate-100 pb-2 text-sm" key={event.id}><p className="font-medium">{event.action.replace(/_/g, ' ')}</p><p className="text-slate-500">{event.explanation ?? event.decision ?? event.entityType}</p></div>)}</div> : <p className="mt-3 text-sm text-slate-500">No recent activity.</p>}
       </section>
       {error ? (
         <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>

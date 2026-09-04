@@ -1,7 +1,8 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { apiPost } from '../services/apiClient';
+import { apiGet, apiPost } from '../services/apiClient';
+import type { AuditEvent } from '../types/audit';
 
 interface Product { product_id: string; name: string; description: string | null; category: string; price: number; currency: string; availability: string; attributes: Record<string, string>; }
 interface Cart { items: Array<{ productId: string; name: string; quantity: number; subtotal: string }>; subtotal: string; currency: string; }
@@ -16,6 +17,14 @@ export function BuyerDashboardPage() {
   const [cart, setCart] = useState<Cart>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [activity, setActivity] = useState<AuditEvent[]>([]);
+
+  useEffect(() => {
+    if (!token) return;
+    void apiGet<{ events: AuditEvent[] }>('/audit?limit=8', token)
+      .then((result) => setActivity(result.events))
+      .catch(() => undefined);
+  }, [token]);
 
   async function send(text: string, action?: AgentAction) {
     if (!token || !text.trim()) return;
@@ -42,8 +51,12 @@ export function BuyerDashboardPage() {
       {error ? <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : null}
       <form onSubmit={submit} className="flex gap-3 border border-slate-200 bg-white p-4 shadow-sm"><input className="min-w-0 flex-1 border border-slate-300 px-4 py-3" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Ask for a product, details, or cart help" disabled={loading} /><button className="bg-ink px-5 py-3 text-sm font-semibold text-white disabled:bg-slate-400" disabled={loading || !message.trim()}>Send</button></form>
     </div>
-    <aside className="h-fit border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Cart summary</h2>{!cart?.items.length ? <p className="mt-3 text-sm text-slate-500">Ask me to show your cart.</p> : <><div className="mt-4 grid gap-3">{cart.items.map((item) => <div className="flex justify-between gap-3 text-sm" key={item.productId}><span>{item.name} × {item.quantity}</span><strong>{cart.currency} {Number(item.subtotal).toLocaleString('en-IN')}</strong></div>)}</div><p className="mt-5 flex justify-between border-t pt-4"><span>Total</span><strong>{cart.currency} {Number(cart.subtotal).toLocaleString('en-IN')}</strong></p><Link className="mt-4 block text-sm font-semibold text-mint" to="/buyer/cart">Open cart</Link></>}</aside>
+    <aside className="grid h-fit gap-6"><div className="border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Cart summary</h2>{!cart?.items.length ? <p className="mt-3 text-sm text-slate-500">Ask me to show your cart.</p> : <><div className="mt-4 grid gap-3">{cart.items.map((item) => <div className="flex justify-between gap-3 text-sm" key={item.productId}><span>{item.name} × {item.quantity}</span><strong>{cart.currency} {Number(item.subtotal).toLocaleString('en-IN')}</strong></div>)}</div><p className="mt-5 flex justify-between border-t pt-4"><span>Total</span><strong>{cart.currency} {Number(cart.subtotal).toLocaleString('en-IN')}</strong></p><Link className="mt-4 block text-sm font-semibold text-mint" to="/buyer/cart">Open cart</Link></>}</div><Activity events={activity} /></aside>
   </section>;
+}
+
+function Activity({ events }: { events: AuditEvent[] }) {
+  return <div className="border border-slate-200 bg-white p-5 shadow-sm"><h2 className="text-lg font-semibold">Recent activity</h2>{events.length ? <div className="mt-3 grid gap-3">{events.map((event) => <div className="border-b border-slate-100 pb-2 text-sm" key={event.id}><p className="font-medium">{event.action.replace(/_/g, ' ')}</p><p className="text-slate-500">{event.explanation ?? event.decision ?? event.entityType}</p></div>)}</div> : <p className="mt-3 text-sm text-slate-500">No recent activity.</p>}</div>;
 }
 
 function ProductCard({ product, actions, onAction }: { product: Product; actions: AgentAction[]; onAction: (action: AgentAction) => void }) {

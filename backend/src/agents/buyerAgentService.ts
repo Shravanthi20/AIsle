@@ -10,6 +10,7 @@ import { HttpError, httpStatus } from '../utils/http.js';
 import type { BuyerAgentAction } from './buyerAgent.js';
 import { RuleBasedIntentProvider, type IntentProvider } from './intentProvider.js';
 import type { Recommendation } from '../types/recommendation.js';
+import { AuditService } from '../audit/auditService.js';
 
 interface AgentContext {
   products: AgentCatalogProduct[];
@@ -44,12 +45,14 @@ export class BuyerAgentService {
     private readonly viewCart = new ViewCartTool(),
     private readonly checkout = new CheckoutTool(),
     private readonly intentProvider: IntentProvider = new RuleBasedIntentProvider(),
+    private readonly audits = new AuditService(),
   ) {}
 
   async chat(user: AuthenticatedUser, message: string, action?: BuyerAgentAction): Promise<BuyerAgentResponse> {
     if (user.role !== 'BUYER') throw new HttpError(httpStatus.forbidden, 'Buyer access required');
     if (typeof message !== 'string' || !message.trim()) throw new HttpError(httpStatus.badRequest, 'Message is required');
     const text = message.trim();
+    await this.audits.log({ user, buyerId: user.id, actorType: 'BUYER_AGENT', action: 'AGENT_REQUEST', entityType: 'BUYER_AGENT', context: { message: text }, explanation: 'Buyer agent received a request.' });
     const context = contexts.get(user.id) ?? { products: [] };
 
     if (action?.type === 'view_cart' || /\b(show|view)\s+(my\s+)?cart\b/i.test(text)) {
@@ -59,7 +62,7 @@ export class BuyerAgentService {
 
     if (action?.type === 'prepare_checkout' || /\b(checkout|buy now)\b/i.test(text)) {
       const checkout = await this.checkout.execute(user);
-      return { message: checkout.message, state: checkout.items.length ? 'WAITING_FOR_APPROVAL' : 'ERROR', products: context.products, actions: checkout.items.length ? [{ type: 'prepare_checkout', label: 'Review checkout' }] : [], cart: checkout };
+      return { message: checkout.message, state: checkout.items.length ? checkout.decision === 'DENY' ? 'ERROR' : checkout.decision === 'REQUIRES_APPROVAL' ? 'WAITING_FOR_APPROVAL' : 'READY_FOR_CHECKOUT' : 'ERROR', products: context.products, actions: checkout.items.length && checkout.decision !== 'DENY' ? [{ type: 'prepare_checkout', label: 'Review checkout' }] : [], cart: checkout };
     }
 
     const productId = action?.productId ?? this.selectedProduct(text, context.products);
@@ -98,6 +101,7 @@ export class BuyerAgentService {
     const intent = this.intentProvider.understand(text);
     const found = await this.search.execute({ query: text, maxPrice: intent.maxPrice, attributes: intent.attributes });
     const recommendations = await this.recommend.execute(text);
+    await this.audits.log({ user, buyerId: user.id, actorType: 'BUYER_AGENT', action: 'PRODUCT_RECOMMENDATIONS', entityType: 'PRODUCT', context: { productIds: recommendations.map((recommendation) => recommendation.product_id) }, decision: 'RECOMMENDED', explanation: recommendations.map((recommendation) => recommendation.reason).join(' ') || 'No matching recommendations were returned.' });
     const products = this.rankSearchResults(found, recommendations);
     context.products = products;
     context.query = text;
