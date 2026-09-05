@@ -245,3 +245,33 @@ SELECT product_id, key, value
 FROM clothing_attributes
 ON CONFLICT (product_id, key) DO UPDATE
 SET value = EXCLUDED.value;
+
+INSERT INTO products (id, merchant_id, name, description, category, price, currency, stock, image_url, status)
+VALUES
+  ('00000000-0000-4000-8000-000000005001', '00000000-0000-4000-8000-000000001005', 'Oxidized Silver Jhumkas', 'Beautiful traditional earrings that perfectly complement sarees.', 'Jewelry', 1500.00, 'INR', 20, 'https://example.test/images/jhumkas.jpg', 'ACTIVE'),
+  ('00000000-0000-4000-8000-000000005002', '00000000-0000-4000-8000-000000001006', 'Golden Bangle Set', 'Classic golden bangles for festive occasions.', 'Jewelry', 2500.00, 'INR', 15, 'https://example.test/images/bangles.jpg', 'ACTIVE'),
+  ('00000000-0000-4000-8000-000000005003', '00000000-0000-4000-8000-000000001007', 'Embroidered Clutch', 'Elegant embroidered clutch to match your ethnic wear.', 'Accessories', 1800.00, 'INR', 10, 'https://example.test/images/clutch.jpg', 'ACTIVE')
+ON CONFLICT (id) DO UPDATE
+SET merchant_id = EXCLUDED.merchant_id,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    category = EXCLUDED.category,
+    price = EXCLUDED.price,
+    currency = EXCLUDED.currency,
+    stock = EXCLUDED.stock,
+    image_url = EXCLUDED.image_url,
+    status = EXCLUDED.status;
+
+INSERT INTO product_attributes (product_id, key, value)
+VALUES
+  ('00000000-0000-4000-8000-000000005001', 'use_case', 'festive wear'),
+  ('00000000-0000-4000-8000-000000005001', 'occasion', 'festive'),
+  ('00000000-0000-4000-8000-000000005001', 'compatib', 'Sarees'),
+  ('00000000-0000-4000-8000-000000005002', 'use_case', 'festive wear'),
+  ('00000000-0000-4000-8000-000000005002', 'occasion', 'festive'),
+  ('00000000-0000-4000-8000-000000005002', 'compatib', 'Sarees'),
+  ('00000000-0000-4000-8000-000000005003', 'use_case', 'festive wear'),
+  ('00000000-0000-4000-8000-000000005003', 'occasion', 'festive'),
+  ('00000000-0000-4000-8000-000000005003', 'compatib', 'Sarees')
+ON CONFLICT (product_id, key) DO UPDATE
+SET value = EXCLUDED.value;

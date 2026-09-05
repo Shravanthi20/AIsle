@@ -26,6 +26,8 @@ export class RuleBasedIntentProvider implements IntentProvider {
   }
 }
 
+const intentCache = new Map<string, BuyerIntent>();
+
 export class LlmIntentProvider implements IntentProvider {
   constructor(
     private readonly provider = process.env.LLM_PROVIDER ?? 'openai',
@@ -38,6 +40,11 @@ export class LlmIntentProvider implements IntentProvider {
   async understand(message: string): Promise<BuyerIntent> {
     if (!this.endpoint) return this.fallback.understand(message);
     if (this.provider !== 'ollama' && !this.apiKey) return this.fallback.understand(message);
+    
+    const cacheKey = message.trim().toLowerCase();
+    if (intentCache.has(cacheKey)) {
+      return intentCache.get(cacheKey)!;
+    }
     try {
       const messages = [
         { role: 'system', content: 'Extract shopping intent as JSON only. Do not invent product facts. Return searchTerms:string[], minPrice:number|null, maxPrice:number|null, attributes:object, budgetFlexibility:number. Only explicit mandatory requirements belong in attributes or price limits. budgetFlexibility must be between 0 and 0.1.' },
@@ -62,23 +69,40 @@ export class LlmIntentProvider implements IntentProvider {
         });
       }
 
-      const response = await fetch(this.endpoint, {
-        method: 'POST',
-        headers: { 
-          'content-type': 'application/json', 
-          ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {})
-        },
-        body,
-        signal: AbortSignal.timeout(10000), // Increased timeout for local LLMs
-      });
-      if (!response.ok) throw new Error(`Intent provider returned ${response.status}`);
+      let response;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        response = await fetch(this.endpoint, {
+          method: 'POST',
+          headers: { 
+            'content-type': 'application/json', 
+            ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {})
+          },
+          body,
+          signal: AbortSignal.timeout(10000), // Increased timeout for local LLMs
+        });
+        if (response.status === 429 && attempt < 3) {
+          console.warn(`Intent LLM 429 Rate Limit. Retrying attempt ${attempt + 1}...`);
+          await new Promise(resolve => setTimeout(resolve, attempt * 3000));
+          continue;
+        }
+        if (!response.ok) throw new Error(`Intent provider returned ${response.status}`);
+        break;
+      }
+      if (!response) throw new Error('Intent provider failed to initialize request');
       const payload = await response.json() as any;
       const content = this.provider === 'ollama' 
         ? payload.message?.content 
         : payload.choices?.[0]?.message?.content;
       if (!content) throw new Error('Intent provider returned no content');
-      const parsed = JSON.parse(content) as Partial<BuyerIntent>;
-      return this.validate(parsed, message);
+      const cleanContent = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+      const parsed = JSON.parse(cleanContent) as Partial<BuyerIntent>;
+      const validated = this.validate(parsed, message);
+      intentCache.set(cacheKey, validated);
+      if (intentCache.size > 1000) {
+        const firstKey = intentCache.keys().next().value;
+        if (firstKey) intentCache.delete(firstKey);
+      }
+      return validated;
     } catch (error) {
       console.error('LLM Intent Extraction failed:', error);
       return this.fallback.understand(message);

@@ -162,7 +162,11 @@ export class BuyerAgentService {
   private selectedProduct(message: string, products: AgentCatalogProduct[]): string | undefined {
     const ordinal = message.match(/\b(first|second|third)\b/i)?.[1]?.toLowerCase();
     if (ordinal) return products[{ first: 0, second: 1, third: 2 }[ordinal] ?? 0]?.product_id;
-    return products.find((product) => message.toLowerCase().includes(product.name.toLowerCase()))?.product_id;
+    const exactMatch = products.find((product) => message.toLowerCase().includes(product.name.toLowerCase()))?.product_id;
+    if (exactMatch) return exactMatch;
+    // Fallback: If they use "this", "that", "the", or "it" and mention parts of a product category or just generally, assume the first product.
+    if (/\b(this|that|the|it)\b/i.test(message) && products.length > 0) return products[0]?.product_id;
+    return undefined;
   }
 
   private selectionResponse(products: AgentCatalogProduct[]): BuyerAgentResponse {

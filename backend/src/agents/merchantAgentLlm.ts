@@ -9,6 +9,8 @@ export interface MerchantAgentLlmResponse {
   campaignDraft?: CampaignDraftInput;
 }
 
+const merchantCache = new Map<string, MerchantAgentLlmResponse>();
+
 export class MerchantAgentLlm {
   constructor(
     private readonly provider = process.env.LLM_PROVIDER ?? 'openai',
@@ -20,6 +22,11 @@ export class MerchantAgentLlm {
   async orchestrate(message: string, analytics: MerchantAnalytics, catalog: Product[], performance: ProductPerformance[]): Promise<MerchantAgentLlmResponse> {
     if (!this.endpoint || (this.provider !== 'ollama' && !this.apiKey)) {
       throw new Error('LLM is not configured properly for Merchant Agent');
+    }
+
+    const cacheKey = message.trim().toLowerCase();
+    if (merchantCache.has(cacheKey)) {
+      return merchantCache.get(cacheKey)!;
     }
 
     const systemPrompt = `You are a Merchant AI Assistant acting as a Campaign Orchestrator. 
@@ -75,17 +82,27 @@ ${performance.slice(0, 10).map(p => `- ID: ${p.productId}, Units Sold: ${p.units
         });
       }
 
-      const response = await fetch(this.endpoint, {
-        method: 'POST',
-        headers: { 
-          'content-type': 'application/json', 
-          ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {})
-        },
-        body,
-        signal: AbortSignal.timeout(15000),
-      });
-
-      if (!response.ok) throw new Error(`Merchant LLM returned ${response.status}`);
+      let response;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        response = await fetch(this.endpoint, {
+          method: 'POST',
+          headers: { 
+            'content-type': 'application/json', 
+            ...(this.apiKey ? { authorization: `Bearer ${this.apiKey}` } : {})
+          },
+          body,
+          signal: AbortSignal.timeout(15000),
+        });
+        if (response.status === 429 && attempt < 3) {
+          console.warn(`Merchant LLM 429 Rate Limit. Retrying attempt ${attempt + 1}...`);
+          await new Promise(resolve => setTimeout(resolve, attempt * 3000));
+          continue;
+        }
+        if (!response.ok) throw new Error(`Merchant LLM returned ${response.status}`);
+        break;
+      }
+      
+      if (!response) throw new Error('Merchant LLM failed to initialize request');
       const payload = await response.json() as any;
       const content = this.provider === 'ollama' 
         ? payload.message?.content 
@@ -93,14 +110,18 @@ ${performance.slice(0, 10).map(p => `- ID: ${p.productId}, Units Sold: ${p.units
         
       if (!content) throw new Error('Merchant LLM returned no content');
       
-      const parsed = JSON.parse(content) as Partial<MerchantAgentLlmResponse>;
+      const cleanContent = content.replace(/^```json\s*/i, '').replace(/\s*```$/i, '').trim();
+      const parsed = JSON.parse(cleanContent) as Partial<MerchantAgentLlmResponse>;
       
-      return {
+      const result = {
         answer: parsed.answer || 'I could not generate a proper response.',
         suggestedActions: parsed.suggestedActions || [],
         relevantProductIds: parsed.relevantProductIds || [],
         campaignDraft: parsed.campaignDraft as CampaignDraftInput | undefined
       };
+      
+      merchantCache.set(cacheKey, result);
+      return result;
     } catch (error) {
       console.error('Merchant LLM failed:', error);
       throw new Error('I could not analyze your request right now. Please check LLM configuration.');
