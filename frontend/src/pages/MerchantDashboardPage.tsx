@@ -4,6 +4,7 @@ import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '../services/apiCli
 import type { AuditEvent } from '../types/audit';
 import type { MerchantAnalytics } from '../types/analytics';
 import { Card } from '../components/ui';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 type Status = 'ACTIVE' | 'INACTIVE';
 interface Attribute {
@@ -43,6 +44,7 @@ interface MerchantAgentResponse {
     underperformingProducts: ProductInsight[];
   };
   suggestedActions: string[];
+  actions?: Array<{ type: string; label: string; campaignId?: string }>;
 }
 interface FormState {
   name: string;
@@ -119,6 +121,29 @@ function Metric({ label, value }: { label: string; value: number | string }) {
     <div className="metric-card surface">
       <p className="eyebrow">{label}</p>
       <p className="metric-value">{value}</p>
+    </div>
+  );
+}
+
+function ForecastChart({ trends, forecast }: { trends: MerchantAnalytics['trends'], forecast: NonNullable<MerchantAnalytics['forecast']> }) {
+  if (!trends.length && !forecast.length) return null;
+  const data = [...trends.map(t => ({ ...t, historical: Number(t.revenue), predicted: null })), ...forecast.map(f => ({ ...f, historical: null, predicted: Number(f.revenue) }))];
+  return (
+    <div className="mt-6">
+      <h2 className="text-lg font-semibold mb-4">Revenue Forecast (Next 14 Days)</h2>
+      <div className="h-80 w-full bg-white p-4 border border-slate-100 rounded-lg shadow-sm">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+            <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#64748b' }} tickMargin={10} minTickGap={30} />
+            <YAxis tick={{ fontSize: 12, fill: '#64748b' }} tickFormatter={(value) => `$${value}`} />
+            <Tooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+            <Legend wrapperStyle={{ paddingTop: '20px' }} />
+            <Line type="monotone" dataKey="historical" name="Historical Revenue" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+            <Line type="monotone" dataKey="predicted" name="Forecasted Revenue" stroke="#6366f1" strokeWidth={3} strokeDasharray="5 5" dot={false} activeDot={{ r: 6 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -269,6 +294,22 @@ export function MerchantDashboardPage() {
     }
   }
 
+  async function handleAgentAction(action: { type: string; campaignId?: string }) {
+    if (!token) return;
+    if (action.type === 'approve_campaign' && action.campaignId) {
+      try {
+        setAssistantLoading(true);
+        await apiPost(`/agent/merchant/action`, action, token);
+        setNotice('Campaign approved, scheduled, and run successfully!');
+        setAssistant((prev) => prev ? { ...prev, answer: prev.answer + '\n\n✅ Campaign has been approved and is running!', actions: prev.actions?.filter(a => a.campaignId !== action.campaignId) } : null);
+      } catch (reason) {
+        setAssistantError(reason instanceof Error ? reason.message : 'Could not approve campaign');
+      } finally {
+        setAssistantLoading(false);
+      }
+    }
+  }
+
   return (
     <section className="grid gap-8">
       <div>
@@ -296,6 +337,7 @@ export function MerchantDashboardPage() {
           <Card className="p-5"><h2 className="text-lg font-semibold">Low stock products</h2>{analytics.lowStockProducts.length ? <ul className="mt-3 grid gap-2 text-sm text-slate-600">{analytics.lowStockProducts.map((item) => <li className="flex justify-between border-b border-slate-100 pb-2" key={item.productId}><span>{item.name}</span><strong>{item.stock} left</strong></li>)}</ul> : <p className="mt-3 text-sm text-slate-500">No active products are low on stock.</p>}</Card>
         </div>
         {analytics.trends.length ? <div><h2 className="text-lg font-semibold">Sales trend</h2><p className="mt-2 text-sm text-slate-600">{analytics.trends.map((point) => `${point.date}: ${point.orders} orders, ${analytics.currency ?? ''} ${point.revenue}`).join('  |  ')}</p></div> : null}
+        <ForecastChart trends={analytics.trends} forecast={analytics.forecast || []} />
       </section> : null}
       <section className="grid gap-5 border border-slate-200 bg-white p-6 shadow-sm">
         <div>
@@ -339,6 +381,15 @@ export function MerchantDashboardPage() {
                 <ul className="mt-2 grid gap-2 text-sm text-slate-600">
                   {assistant.suggestedActions.map((action) => <li className="border-b border-slate-100 py-2" key={action}>{action}</li>)}
                 </ul>
+                {assistant.actions && assistant.actions.length > 0 && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {assistant.actions.map((action, i) => (
+                      <button key={i} onClick={() => void handleAgentAction(action)} className="bg-mint px-4 py-2 text-sm font-semibold text-white rounded">
+                        {action.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -346,7 +397,7 @@ export function MerchantDashboardPage() {
       </section>
       <section className="border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-xl font-semibold">Recent activity</h2>
-        {activity.length ? <div className="mt-4 grid gap-3">{activity.map((event) => <div className="border-b border-slate-100 pb-2 text-sm" key={event.id}><p className="font-medium">{event.action.replace(/_/g, ' ')}</p><p className="text-slate-500">{event.explanation ?? event.decision ?? event.entityType}</p></div>)}</div> : <p className="mt-3 text-sm text-slate-500">No recent activity.</p>}
+        {activity.length ? <div className="mt-4 grid gap-3">{activity.map((event) => <div className="border-b border-slate-100 pb-2 text-sm" key={event.id}><div className="flex items-center justify-between gap-2"><p className="font-medium">{event.action.replace(/_/g, ' ')}</p><p className="text-[10px] text-slate-400">{new Date(event.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</p></div><p className="text-slate-500">{event.explanation ?? event.decision ?? event.entityType}</p></div>)}</div> : <p className="mt-3 text-sm text-slate-500">No recent activity.</p>}
       </section>
       {error ? (
         <p className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>

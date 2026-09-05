@@ -33,7 +33,7 @@ export class AnalyticsRepository {
       revenue: row.revenue ?? '0.00',
       averageOrderValue: row.average_order_value ?? '0.00',
       currency: row.currency_count === '1' ? row.currency : null,
-      topSellingProducts: [], lowStockProducts: [], inactiveProducts: [], trends: [],
+      topSellingProducts: [], lowStockProducts: [], inactiveProducts: [], trends: [], forecast: [],
     };
   }
 

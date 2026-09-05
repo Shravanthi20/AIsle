@@ -25,7 +25,7 @@ export class AgentCommerceService {
     if (!request || typeof request.message !== 'string' || !request.message.trim()) {
       throw new HttpError(httpStatus.badRequest, 'Message is required');
     }
-    const requirement = this.requirements.execute(request);
+    const requirement = await this.requirements.execute(request);
     await this.audits.log({ user, buyerId: user.id, actorType: 'BUYER_AGENT', action: 'AGENT_REQUEST', entityType: 'AGENT_COMMERCE', context: { requirements: requirement.requirements, budget: requirement.budget, quantity: requirement.quantity }, explanation: 'Buyer agent created a structured commerce request.' });
     const buyerResponse = await this.buyer.chat(user, request.message, request.action);
     const candidates = requirement.productId

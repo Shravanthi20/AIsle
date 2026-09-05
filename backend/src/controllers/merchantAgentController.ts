@@ -13,4 +13,14 @@ export class MerchantAgentController {
       next(error);
     }
   };
+
+  handleAction = async (request: Request, response: Response, next: NextFunction): Promise<void> => {
+    try {
+      if (!request.user) throw new HttpError(httpStatus.unauthorized, 'Authentication required');
+      await this.agent.handleAction(request.user, request.body);
+      response.status(httpStatus.ok).json({ success: true });
+    } catch (error) {
+      next(error);
+    }
+  };
 }

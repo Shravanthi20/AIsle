@@ -70,7 +70,7 @@ export class OrderService {
   }
 
   async get(user: AuthenticatedUser, id: string) {
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id))
       throw new HttpError(httpStatus.badRequest, 'Order ID is invalid');
     const order = await this.orders.getOrderById(id);
     if (!order) throw new HttpError(httpStatus.notFound, 'Order not found');

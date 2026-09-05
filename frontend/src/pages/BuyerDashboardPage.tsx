@@ -63,7 +63,7 @@ export function BuyerDashboardPage() {
 }
 
 function Activity({ events }: { events: AuditEvent[] }) {
-  return <Card className="p-5"><h2 className="text-lg font-semibold">Recent activity</h2>{events.length ? <div className="mt-3 grid gap-3">{events.map((event) => <div className="border-b border-slate-100 pb-2 text-sm" key={event.id}><div className="flex items-center justify-between gap-2"><p className="font-semibold">{event.action.replace(/_/g, ' ')}</p>{event.decision ? <StatusBadge status={event.decision} /> : null}</div><p className="mt-1 text-xs leading-5 text-slate-500">{event.explanation ?? event.entityType}</p></div>)}</div> : <EmptyState title="No activity yet" message="Your shopping actions will appear here." />}</Card>;
+  return <Card className="p-5"><h2 className="text-lg font-semibold">Recent activity</h2>{events.length ? <div className="mt-3 grid gap-3">{events.map((event) => <div className="border-b border-slate-100 pb-2 text-sm" key={event.id}><div className="flex items-center justify-between gap-2"><p className="font-semibold">{event.action.replace(/_/g, ' ')}</p>{event.decision ? <StatusBadge status={event.decision} /> : null}</div><p className="mt-1 text-xs leading-5 text-slate-500">{event.explanation ?? event.entityType}</p><p className="mt-1 text-[10px] text-slate-400">{new Date(event.createdAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</p></div>)}</div> : <EmptyState title="No activity yet" message="Your shopping actions will appear here." />}</Card>;
 }
 
 function ProductCard({ product, actions, onAction }: { product: Product; actions: AgentAction[]; onAction: (action: AgentAction) => void }) {

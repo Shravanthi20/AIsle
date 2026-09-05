@@ -25,7 +25,7 @@ The runner records applied filenames in `schema_migrations`, wraps each file in 
 Seed files live in `backend/db/seeds` and run in filename order:
 
 - `001_seed_commerce.sql`: original demo merchants, buyers, products, carts, attributes, and sample orders.
-- `002_seed_large_catalog.sql`: fourth merchant plus 50 deterministic generated products for each of the four merchants.
+- `002_seed_large_catalog.sql`: fourth merchant plus 50 deterministic generated products for each of the four original merchants, and three clothing merchants with 15 shared Indian-dress color combinations each.
 
 Run them with:
 

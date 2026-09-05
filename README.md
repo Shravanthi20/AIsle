@@ -192,6 +192,8 @@ npm install
 
 Copy `.env.example` to `.env` and adjust values as needed. Local development defaults to PostgreSQL on port `5432`, the backend on port `4000`, and the frontend on port `5173`.
 
+For LLM-backed intent extraction, configure the optional `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` values. The backend expects an OpenAI-compatible chat-completions endpoint and falls back to local extraction when these values are absent or the provider times out.
+
 ### Start the database and load data
 
 ```powershell
@@ -228,6 +230,9 @@ Merchant accounts use password `aisle_demo_merchant123`:
 - `arjun@soundnest.test`
 - `neha@techcrate.test`
 - `vikram@homepulse.test`
+- `asha@rangrez.test`
+- `meera@vastra.test`
+- `kavya@rangoli.test`
 
 Buyer accounts use password `aisle_demo_buyer123`:
 

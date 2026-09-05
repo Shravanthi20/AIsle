@@ -2,8 +2,10 @@ import { ProductSearchService, type SearchResult } from '../../services/productS
 
 export interface SearchProductsInput {
   query: string;
+  minPrice?: number;
   maxPrice?: number;
   attributes?: Record<string, string>;
+  sort?: 'price_asc' | 'price_desc';
 }
 
 export class SearchProductsTool {
@@ -12,10 +14,12 @@ export class SearchProductsTool {
   async execute(input: SearchProductsInput): Promise<SearchResult[]> {
     const result = await this.search.search({
       q: input.query,
+      minPrice: input.minPrice?.toString(),
       maxPrice: input.maxPrice?.toString(),
       attributes: input.attributes,
       inStock: 'true',
       limit: 20,
+      sort: input.sort,
     });
     return result.results;
   }

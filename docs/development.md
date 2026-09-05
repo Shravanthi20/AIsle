@@ -35,6 +35,8 @@ Database: aisle_dev
 
 Set Razorpay test keys in `.env` to exercise payments. Do not commit real credentials.
 
+Optional LLM intent extraction uses `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL`. The provider must return structured JSON through an OpenAI-compatible chat-completions API. Candidate retrieval and ranking remain local code; the backend falls back when the provider is unavailable.
+
 ## Start the Database
 
 ```powershell

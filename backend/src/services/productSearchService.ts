@@ -1,6 +1,7 @@
 import { AgentCatalogService } from './agentCatalogService.js';
 import type { AgentCatalogProduct } from '../types/agentCatalog.js';
 import { HttpError, httpStatus } from '../utils/http.js';
+import { eng, removeStopwords } from 'stopword';
 
 type Sort = 'relevance' | 'price_asc' | 'price_desc';
 export interface SearchInput {
@@ -29,12 +30,50 @@ function normalize(value: string): string {
 function terms(value: string): string[] {
   return [
     ...new Set(
-      normalize(value)
-        .split(' ')
-        .filter(Boolean)
+      removeStopwords(normalize(value).split(' '), eng)
+        .filter((term) => term.length > 2 && !/^\d+$/.test(term))
         .map((term) => (term.length > 3 && term.endsWith('s') ? term.slice(0, -1) : term)),
     ),
   ];
+}
+function tokenSet(value: string): Set<string> {
+  return new Set(terms(value));
+}
+function matchesTerm(term: string, searchableTokens: Set<string>): boolean {
+  if (searchableTokens.has(term)) return true;
+  if (term.length < 5) return false;
+  return [...searchableTokens].some((candidate) => oneEditAway(term, candidate));
+}
+function oneEditAway(left: string, right: string): boolean {
+  if (left === right) return true;
+  if (Math.abs(left.length - right.length) > 1) return false;
+  if (left.length === right.length) {
+    const differences = [...left].reduce((count, character, index) => count + (character === right[index] ? 0 : 1), 0);
+    if (differences === 1) return true;
+    const swapped = [...left];
+    for (let index = 0; index < swapped.length - 1; index += 1) {
+      [swapped[index], swapped[index + 1]] = [swapped[index + 1] as string, swapped[index] as string];
+      if (swapped.join('') === right) return true;
+      [swapped[index], swapped[index + 1]] = [swapped[index + 1] as string, swapped[index] as string];
+    }
+    return false;
+  }
+  const shorter = left.length < right.length ? left : right;
+  const longer = left.length < right.length ? right : left;
+  let shortIndex = 0;
+  let longIndex = 0;
+  let difference = 0;
+  while (shortIndex < shorter.length && longIndex < longer.length) {
+    if (shorter[shortIndex] === longer[longIndex]) {
+      shortIndex += 1;
+      longIndex += 1;
+    } else {
+      difference += 1;
+      longIndex += 1;
+      if (difference > 1) return false;
+    }
+  }
+  return true;
 }
 function number(value: unknown, name: string): number | undefined {
   if (value === undefined) return undefined;
@@ -126,14 +165,27 @@ export class ProductSearchService {
                 'sort must be relevance, price_asc, or price_desc',
               );
             })();
-    const queryTerms = terms(query);
     const products = await this.catalog.list();
+    const catalogTokens = new Set(products.flatMap((product) => [
+      product.name,
+      product.category,
+      product.description ?? '',
+      ...Object.entries(product.attributes).flatMap(([key, value]) => [key, value]),
+    ].flatMap(terms)));
+    const queryTerms = terms(query).filter((term) => matchesTerm(term, catalogTokens));
     const matches = products
       .filter((product) => {
         if (inStock && product.availability !== 'IN_STOCK') return false;
         if (category && !normalize(product.category).includes(category)) return false;
         if (minPrice !== undefined && product.price < minPrice) return false;
         if (maxPrice !== undefined && product.price > maxPrice) return false;
+        const searchableText = [
+          product.name,
+          product.category,
+          product.description ?? '',
+          ...Object.entries(product.attributes).flatMap(([key, value]) => [key, value]),
+        ].join(' ');
+        const searchableTokens = tokenSet(searchableText);
         if (
           !Object.entries(attributes).every(([key, value]) =>
             Object.entries(product.attributes).some(
@@ -143,15 +195,7 @@ export class ProductSearchService {
           )
         )
           return false;
-        const searchable = [
-          product.name,
-          product.category,
-          product.description ?? '',
-          ...Object.entries(product.attributes).flatMap(([key, value]) => [key, value]),
-        ]
-          .map(normalize)
-          .join(' ');
-        return queryTerms.length === 0 || queryTerms.some((term) => searchable.includes(term));
+        return queryTerms.length === 0 || queryTerms.every((term) => matchesTerm(term, searchableTokens));
       })
       .map((product) => this.rank(product, queryTerms, category, minPrice, maxPrice, attributes));
     matches.sort((a, b) =>
@@ -182,31 +226,33 @@ export class ProductSearchService {
     maxPrice: number | undefined,
     requestedAttributes: Record<string, string>,
   ): SearchResult {
-    const name = normalize(product.name),
-      productCategory = normalize(product.category),
-      description = normalize(product.description ?? '');
+    const description = normalize(product.description ?? '');
     const attributeText = Object.values(product.attributes).map(normalize).join(' ');
+    const nameTokens = tokenSet(product.name);
+    const categoryTokens = tokenSet(product.category);
+    const attributeTokens = tokenSet(attributeText);
+    const descriptionTokens = tokenSet(description);
     let score = 0.15;
     const reasons: string[] = [];
-    if (queryTerms.some((term) => name.includes(term))) {
+    if (queryTerms.some((term) => matchesTerm(term, nameTokens))) {
       score += 0.35;
       reasons.push('Matches product name');
     }
     if (
-      queryTerms.some((term) => productCategory.includes(term)) ||
-      (category && productCategory.includes(category))
+      queryTerms.some((term) => matchesTerm(term, categoryTokens)) ||
+      (category && categoryTokens.has(category))
     ) {
       score += 0.25;
       reasons.push(`Matches ${product.category} category`);
     }
     if (
-      queryTerms.some((term) => attributeText.includes(term)) ||
+      queryTerms.some((term) => matchesTerm(term, attributeTokens)) ||
       Object.keys(requestedAttributes).length
     ) {
       score += 0.2;
       reasons.push('Matches requested attributes');
     }
-    if (queryTerms.some((term) => description.includes(term))) {
+    if (queryTerms.some((term) => matchesTerm(term, descriptionTokens))) {
       score += 0.1;
       reasons.push('Matches product description');
     }

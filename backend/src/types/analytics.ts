@@ -33,6 +33,7 @@ export interface MerchantAnalytics {
   lowStockProducts: ProductSales[];
   inactiveProducts: ProductSales[];
   trends: TrendPoint[];
+  forecast: TrendPoint[];
 }
 
 export interface MerchantOrderAnalytics {

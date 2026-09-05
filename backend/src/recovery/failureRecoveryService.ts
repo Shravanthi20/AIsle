@@ -28,5 +28,5 @@ export class FailureRecoveryService {
   }
 
   private requireBuyer(user: AuthenticatedUser): void { if (user.role !== 'BUYER') throw new HttpError(httpStatus.forbidden, 'Buyer access required'); }
-  private requireOrderId(orderId: string): void { if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(orderId)) throw new HttpError(httpStatus.badRequest, 'Order ID is invalid'); }
+  private requireOrderId(orderId: string): void { if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId)) throw new HttpError(httpStatus.badRequest, 'Order ID is invalid'); }
 }

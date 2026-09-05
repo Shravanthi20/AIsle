@@ -8,7 +8,7 @@ import type { AgentCatalogProduct } from '../types/agentCatalog.js';
 import type { AuthenticatedUser } from '../types/auth.js';
 import { HttpError, httpStatus } from '../utils/http.js';
 import type { BuyerAgentAction } from './buyerAgent.js';
-import { RuleBasedIntentProvider, type IntentProvider } from './intentProvider.js';
+import { LlmIntentProvider, type IntentProvider } from './intentProvider.js';
 import type { Recommendation } from '../types/recommendation.js';
 import { AuditService } from '../audit/auditService.js';
 import { GetUpsellRecommendationsTool } from './tools/getUpsellRecommendationsTool.js';
@@ -46,7 +46,7 @@ export class BuyerAgentService {
     private readonly add = new AddToCartTool(),
     private readonly viewCart = new ViewCartTool(),
     private readonly checkout = new CheckoutTool(),
-    private readonly intentProvider: IntentProvider = new RuleBasedIntentProvider(),
+    private readonly intentProvider: IntentProvider = new LlmIntentProvider(),
     private readonly audits = new AuditService(),
     private readonly upsells = new GetUpsellRecommendationsTool(),
     private readonly crossSells = new GetCrossSellRecommendationsTool(),
@@ -112,7 +112,10 @@ export class BuyerAgentService {
         const cart = await this.add.execute(user, productId, action?.quantity ?? 1);
         const product = await this.details.execute(productId);
         return { message: `${product.name} was added to your cart.`, state: 'READY_FOR_CHECKOUT', products: context.products, actions: [{ type: 'prepare_checkout', label: 'Prepare checkout' }], cart };
-      } catch (error) { return this.failureResponse(context, error, 'product'); }
+      } catch (error) { 
+        console.error("ADD TO CART ERROR:", error);
+        return this.failureResponse(context, error, 'product'); 
+      }
     }
 
     if (action?.type === 'select_product' || /\b(details|tell me more|show)\b/i.test(text) && productId) {
@@ -123,15 +126,19 @@ export class BuyerAgentService {
       return { message: `${product.name} costs ${product.currency} ${product.price.toLocaleString('en-IN')} and is ${product.availability === 'IN_STOCK' ? 'in stock' : product.availability.toLowerCase().replace('_', ' ')}.`, state: 'WAITING_FOR_SELECTION', products: [product], actions: [{ type: 'add_to_cart', productId: product.product_id, label: `Add ${product.name} to cart` }] };
     }
 
-    const intent = this.intentProvider.understand(text);
+    const intent = await this.intentProvider.understand(text);
     let found: AgentCatalogProduct[];
     let recommendations: Recommendation[];
     try {
-      found = await this.search.execute({ query: text, maxPrice: intent.maxPrice, attributes: intent.attributes });
+      found = await this.search.execute({ query: intent.searchTerms.join(' '), minPrice: intent.minPrice, maxPrice: intent.maxPrice, attributes: intent.attributes });
+      if (intent.maxPrice !== undefined && found.length < 5) {
+        const expanded = await this.search.execute({ query: intent.searchTerms.join(' '), minPrice: intent.minPrice, maxPrice: intent.maxPrice * 1.1, attributes: intent.attributes });
+        found = [...new Map([...found, ...expanded].map((product) => [product.product_id, product])).values()];
+      }
       recommendations = await this.recommend.execute(text);
     } catch (error) { return this.failureResponse(context, error, 'catalog'); }
     await this.audits.log({ user, buyerId: user.id, actorType: 'BUYER_AGENT', action: 'PRODUCT_RECOMMENDATIONS', entityType: 'PRODUCT', context: { productIds: recommendations.map((recommendation) => recommendation.product_id) }, decision: 'RECOMMENDED', explanation: recommendations.map((recommendation) => recommendation.reason).join(' ') || 'No matching recommendations were returned.' });
-    const products = this.rankSearchResults(found, recommendations);
+    const products = this.rankSearchResults(found, recommendations).slice(0, 5);
     context.products = products;
     context.query = text;
     contexts.set(user.id, context);

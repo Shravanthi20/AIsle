@@ -8,7 +8,7 @@ import { HttpError, httpStatus } from '../utils/http.js';
 import { PolicyService } from '../policy/policyService.js';
 import { AuditService } from '../audit/auditService.js';
 
-const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface CreateOrderBody { orderId?: unknown }
 interface VerifyBody {
