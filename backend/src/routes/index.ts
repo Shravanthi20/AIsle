@@ -17,6 +17,7 @@ import { approvalRoutes } from '../policy/approvalRoutes.js';
 import { auditRoutes } from '../audit/auditRoutes.js';
 import { analyticsRoutes } from '../analytics/analyticsRoutes.js';
 import { failureRecoveryRoutes } from '../recovery/failureRecoveryRoutes.js';
+import { growthRoutes } from './growthRoutes.js';
 
 export const apiRoutes = Router();
 
@@ -37,3 +38,4 @@ apiRoutes.use(approvalRoutes);
 apiRoutes.use(auditRoutes);
 apiRoutes.use(analyticsRoutes);
 apiRoutes.use(failureRecoveryRoutes);
+apiRoutes.use(growthRoutes);

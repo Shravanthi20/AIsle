@@ -11,6 +11,8 @@ import type { BuyerAgentAction } from './buyerAgent.js';
 import { RuleBasedIntentProvider, type IntentProvider } from './intentProvider.js';
 import type { Recommendation } from '../types/recommendation.js';
 import { AuditService } from '../audit/auditService.js';
+import { GetUpsellRecommendationsTool } from './tools/getUpsellRecommendationsTool.js';
+import { GetCrossSellRecommendationsTool } from './tools/getCrossSellRecommendationsTool.js';
 
 interface AgentContext {
   products: AgentCatalogProduct[];
@@ -46,6 +48,8 @@ export class BuyerAgentService {
     private readonly checkout = new CheckoutTool(),
     private readonly intentProvider: IntentProvider = new RuleBasedIntentProvider(),
     private readonly audits = new AuditService(),
+    private readonly upsells = new GetUpsellRecommendationsTool(),
+    private readonly crossSells = new GetCrossSellRecommendationsTool(),
   ) {}
 
   async chat(user: AuthenticatedUser, message: string, action?: BuyerAgentAction): Promise<BuyerAgentResponse> {
@@ -70,6 +74,21 @@ export class BuyerAgentService {
     }
 
     const productId = action?.productId ?? this.selectedProduct(text, context.products);
+    if (!action && productId && /\b(upgrade|better|premium|accessor(?:y|ies)|complete|complement)\b/i.test(text)) {
+      const selected = context.products.find((product) => product.product_id === productId);
+      if (selected) {
+        const recommendations = /accessor|complete|complement/i.test(text)
+          ? await this.crossSells.execute(selected)
+          : await this.upsells.execute(selected);
+        const products = recommendations.map((recommendation) => recommendation.product);
+        if (products.length) {
+          context.products = products;
+          contexts.set(user.id, context);
+          const label = recommendations[0]?.type === 'cross_sell' ? 'complementary products' : 'upgrade options';
+          return { message: `Here are ${label}: ${recommendations.map((recommendation) => `${recommendation.product.name} - ${recommendation.reason}`).join(' ')}`, state: 'WAITING_FOR_SELECTION', products, actions: productActions(products) };
+        }
+      }
+    }
     if (!action && context.products.length && /\b(best|recommend|recommendation|travel|compare)\b/i.test(text)) {
       const recommendations = await this.recommend.execute(`${context.query ?? ''} ${text}`.trim());
       const recommendedProducts = context.products.filter((product) =>

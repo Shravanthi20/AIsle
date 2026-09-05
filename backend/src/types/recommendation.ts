@@ -7,7 +7,9 @@ export interface Recommendation extends Pick<
   score: number;
   reason: string;
   matched_requirements: string[];
+  matched_preferences?: string[];
   tradeoffs: string[];
+  confidence?: number;
 }
 
 export interface RecommendationResponse {

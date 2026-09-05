@@ -1,175 +1,86 @@
-# Database
+# Database and Seed Data
 
-The initial AIsle schema models the first commerce milestone:
-
-```text
-PostgreSQL
-   |
-Products
-   |
-Orders
-   |
-Users
-```
+AIsle uses PostgreSQL as the source of truth for identity, catalog, inventory, carts, orders, payment state, policies, audits, growth campaigns, and campaign events.
 
 ## Migrations
 
-SQL migrations live in `backend/db/migrations` and are applied in filename order.
+Migrations live in `backend/db/migrations` and run in filename order:
 
-Run migrations against the configured `DATABASE_URL`:
+1. `001_initial_commerce_schema.sql`: users, merchants, products, attributes, carts, orders, and order items.
+2. `002_payment_integration.sql`: Razorpay identifiers on orders.
+3. `003_policy_approval.sql`: buyer policies and approval snapshots.
+4. `004_audit_logs.sql`: auditable agent and user decisions.
+5. `005_growth_campaigns.sql`: campaign drafts, runs, deliveries, and events.
 
-```bash
+Run them with:
+
+```powershell
 npm run db:migrate --workspace backend
 ```
 
-Applied migrations are tracked in the `schema_migrations` table.
+The runner records applied filenames in `schema_migrations`, wraps each file in a transaction, and skips files already applied.
 
-The migration runner uses the shared PostgreSQL pool from `backend/src/database/db.ts`, executes files in deterministic filename order, wraps each migration in a transaction, and skips migrations that already exist in `schema_migrations`.
+## Seed Data
 
-## Seeds
+Seed files live in `backend/db/seeds` and run in filename order:
 
-Development seed files live in `backend/db/seeds` and are applied in filename order.
+- `001_seed_commerce.sql`: original demo merchants, buyers, products, carts, attributes, and sample orders.
+- `002_seed_large_catalog.sql`: fourth merchant plus 50 deterministic generated products for each of the four merchants.
 
-```bash
+Run them with:
+
+```powershell
 npm run db:seed --workspace backend
 ```
 
-The current seed creates demo merchants, buyers, products, product attributes, carts, and historical orders. Demo passwords are stored as `password_hash` values, not plaintext.
+The resulting development catalog contains approximately 50 to 60 products per merchant because original demo products are preserved alongside generated products. The supplemental seed uses deterministic UUIDs and conflict-safe inserts, so it can be rerun without duplicating records.
 
-## Environment
+Demo merchant password: `aisle_demo_merchant123`
 
-The database connection uses `DATABASE_URL` from the backend environment. Local defaults are documented in `.env.example`:
+Demo buyer password: `aisle_demo_buyer123`
 
-```ini
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-POSTGRES_DB=aisle_dev
-POSTGRES_USER=aisle_user
-POSTGRES_PASSWORD=aisle_password
-DATABASE_URL=postgresql://aisle_user:aisle_password@localhost:5432/aisle_dev
-```
-
-## Access Pattern
-
-Backend database access should flow through one shared pool:
-
-```text
-database/db.ts
-  |
-repositories
-  |
-services
-  |
-controllers
-  |
-routes
-```
-
-Repositories should not create their own PostgreSQL pools.
-
-## Relationships
+## Core Relationships
 
 ```text
 users
 |-- merchants
-|-- carts
-`-- orders
+|-- carts -- cart_items -- products
+`-- orders -- order_items -- products
 
 merchants
 |-- products
-`-- orders
+|-- orders
+`-- campaigns -- campaign_runs -- campaign_deliveries
+                         `-- campaign_events
 
 products
-|-- product_attributes
-|-- cart_items
-`-- order_items
-
-carts
-`-- cart_items
-
-orders
-`-- order_items
+`-- product_attributes
 ```
 
-## Initial Schema
+## Core Tables
 
-### Users
+- `users` and `merchants`: buyer/merchant identity and storefront ownership.
+- `products`: merchant-owned catalog, price, currency, stock, image, and status.
+- `product_attributes`: flexible facts such as `brand`, `use_case`, `tier`, and `compatibility`.
+- `carts` and `cart_items`: one active cart per buyer.
+- `orders` and `order_items`: one-merchant checkout with captured historical unit prices.
+- `policies` and `approvals`: purchase limits and exact approval snapshots.
+- `audit_logs`: actor, action, entity, context, decision, explanation, and timestamp.
+- `campaigns`: merchant campaign definition, objective, audience, products, content, status, and schedule.
+- `campaign_runs`: execution attempts for approved or scheduled campaigns.
+- `campaign_deliveries`: recipient/product jobs with attempts and unique idempotency keys.
+- `campaign_events`: delivery, click, conversion, acceptance, and rejection events.
 
-`users` stores platform accounts for both merchants and buyers.
+The current schema does not materialize audience membership in a separate table. The run API currently receives recipient IDs; a production segmentation worker can populate delivery jobs from audience criteria later.
 
-- `role` uses the `user_role` enum: `MERCHANT`, `BUYER`.
-- `email` is unique.
-- `created_at` and `updated_at` track account timestamps.
+## Data Access Rules
 
-### Merchants
-
-`merchants` stores merchant storefronts and links each store to one merchant user.
-
-- `user_id` references `users.id`.
-- `user_id` is unique so one merchant user owns one store in the initial model.
-- merchant deletion is restricted where historical records depend on it.
-
-### Products
-
-`products` stores the merchant catalog.
-
-### AI-Readable Catalog
-
-PostgreSQL remains the source of truth for the AI-readable catalog. The backend reads `products` and `product_attributes`, then deterministically maps them to an agent-oriented product object; no duplicate product store and no LLM are used. Discovery returns only active, in-stock products. Attributes become a key/value object and `use_case` is also exposed as a `use_cases` array for later buyer-agent use.
-
-- `merchant_id` references `merchants.id`.
-- `price` and `stock` are constrained to non-negative values.
-- `status` uses the `product_status` enum: `DRAFT`, `ACTIVE`, `INACTIVE`, `ARCHIVED`.
-- `updated_at` is maintained by a PostgreSQL trigger.
-- product deletion is restricted when historical order items reference it.
-
-### Product Attributes
-
-`product_attributes` stores flexible product facts for AI discovery.
-
-Examples:
-
-```ini
-color = black
-brand = Nike
-size = 9
-material = mesh
+```text
+database/db.ts
+  -> repositories
+  -> services
+  -> controllers
+  -> routes
 ```
 
-- `product_id` references `products.id`.
-- `(product_id, key)` is unique to avoid duplicate attributes on a product.
-
-### Carts
-
-`carts` stores one active cart per buyer.
-
-- `buyer_id` references `users.id`.
-- `buyer_id` is unique for the initial one-active-cart model.
-
-### Cart Items
-
-`cart_items` stores products inside a cart.
-
-- `cart_id` references `carts.id`.
-- `product_id` references `products.id`.
-- `quantity` must be greater than zero.
-- `(cart_id, product_id)` is unique to avoid duplicate product rows.
-
-### Orders
-
-`orders` stores purchases made by buyers from merchants.
-
-- `buyer_id` references `users.id`.
-- `merchant_id` references `merchants.id`.
-- `status` uses the `order_status` enum: `PENDING`, `CONFIRMED`, `CANCELLED`, `COMPLETED`.
-- `payment_status` uses the `payment_status` enum: `PENDING`, `PAID`, `FAILED`, `REFUNDED`.
-- users and merchants referenced by historical orders cannot be cascade-deleted.
-
-### Order Items
-
-`order_items` stores line items in an order.
-
-- `order_id` references `orders.id`.
-- `product_id` references `products.id`.
-- `quantity` must be greater than zero.
-- `unit_price` is captured separately from the current product price.
+Repositories use the shared PostgreSQL pool. Services enforce role, merchant ownership, stock, state transitions, and policy behavior before repositories are called.

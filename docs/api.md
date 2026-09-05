@@ -1,110 +1,157 @@
+# API Reference
+
+Base URL: `http://localhost:4000/api`. Protected endpoints require `Authorization: Bearer <token>`.
+
+## Health and Authentication
+
+- `GET /health`: API and database connectivity.
+- `POST /auth/register`: create a buyer or merchant account.
+- `POST /auth/login`: return the authenticated user and JWT.
+- `GET /auth/me`: return the current identity.
+
+Example login:
+
+```json
+{ "email": "ada@example.com", "password": "password123" }
+```
+
+## Catalog and Search
+
+- `GET /agent/catalog`: active, in-stock agent-readable products.
+- `GET /agent/catalog/:productId`: one discoverable product.
+- `GET /products/search`: buyer search.
+- `GET /products/search/:productId`: buyer product detail.
+
+Search supports `q`, `category`, `minPrice`, `maxPrice`, `inStock`, `attributes`, `page`, `limit`, and `sort` (`relevance`, `price_asc`, `price_desc`). Attributes accept JSON or `key:value,key:value`. Results contain deterministic `match_score` and `match_reasons` values.
+
+## Customer Recommendations
+
+### `POST /recommendations`
+
+Buyer-only endpoint:
+
+```json
+{
+  "query": "laptop for coding around 70000 preferably lightweight",
+  "maxResults": 3
+}
+```
+
+The response contains grounded products, score, confidence, concise reason, matched requirements, matched soft preferences, and tradeoffs. Strict terms such as `under`, `below`, and `up to` create hard price limits. `around` can allow a controlled 10 percent stretch.
+
 ## Buyer Agent
 
-`POST /api/agent/buyer/chat` is authenticated and restricted to buyers. It accepts `{ "message": "...", "action": { "type": "add_to_cart", "productId": "..." } }` and returns a grounded response with `message`, `state`, `products`, `actions`, and an optional cart summary.
+### `POST /agent/buyer/chat`
 
-The agent delegates to the existing catalog search, recommendation, product detail, cart, and checkout-summary services. It never receives database access, accepts buyer IDs, changes prices or stock, creates payments, or completes checkout without explicit user approval. Checkout preparation only returns the current cart total and `requiresApproval: true`.
-## Payments
+```json
+{ "message": "Show me a laptop for coding around 70000" }
+```
 
-Buyer payment endpoints use the server-side order total and never accept an amount from the browser:
+The response includes `message`, `state`, `products`, `actions`, and an optional cart summary. Follow-up language such as `upgrade`, `premium`, `accessories`, or `complete my setup` invokes upsell or cross-sell tools.
 
-- `POST /api/payments/create-order` with `{ "orderId": "..." }` creates or reuses a Razorpay order.
-- `POST /api/payments/verify` verifies `razorpay_order_id`, `razorpay_payment_id`, and `razorpay_signature`, then marks the AIsle order `PAID` and `CONFIRMED`.
-- `POST /api/payments/failure` records a retryable `FAILED` payment.
-
-Razorpay webhooks are deferred until webhook secret configuration and raw-body handling are added; the browser callback is not trusted for payment state.
-# API
-
-## Health
-
-### `GET /api/health`
-
-Returns the backend health status and database connectivity state.
-
-Example response:
+Explicit cart action:
 
 ```json
 {
-  "status": "ok",
-  "service": "aisle-backend",
-  "database": {
-    "connected": true
-  },
-  "timestamp": "2026-08-24T00:00:00.000Z"
+  "message": "Add the first one to my cart",
+  "action": { "type": "add_to_cart", "productId": "<product-id>", "quantity": 1 }
 }
 ```
 
-## Auth
+## Cart, Orders, and Payment
 
-### `POST /api/auth/register`
+Buyer-only endpoints:
 
-Creates a buyer or merchant account and returns the current user plus a bearer token.
+- `GET /cart`
+- `POST /cart/items`
+- `PUT /cart/items/:productId`
+- `DELETE /cart/items/:productId`
+- `DELETE /cart`
+- `POST /orders/checkout`
+- `GET /orders`
+- `GET /orders/:id`
+
+Checkout recalculates totals from current prices, locks product rows while validating stock, enforces one merchant per order, and creates a pending order.
+
+Payment endpoints:
+
+- `POST /payments/create-order`
+- `POST /payments/verify`
+- `POST /payments/failure`
+
+The browser cannot choose the authoritative payment amount. Razorpay verification is server-side and local development uses test credentials.
+
+## Merchant Catalog and Analytics
+
+Merchant-only endpoints:
+
+- `GET /products`
+- `POST /products`
+- `PUT /products/:id`
+- `DELETE /products/:id`
+- `POST /agent/merchant/chat`
+- `GET /analytics/merchant`
+- `GET /analytics/merchant/products`
+- `GET /analytics/merchant/orders`
+
+All merchant product and order access is scoped to the authenticated merchant profile.
+
+## Growth Opportunities
+
+### `GET /growth/opportunities`
+
+Returns ranked opportunities with action type, trigger or `why now`, candidate products, customer value, business value, opportunity score, confidence, reason, and approval requirement. Optional query parameter: `productId`.
+
+The current detector evaluates up to 25 merchant products per request and returns only opportunities with a relevant available upsell or cross-sell candidate.
+
+## Campaigns
+
+Merchant-only endpoints:
+
+- `GET /growth/campaigns`
+- `POST /growth/campaigns`
+- `POST /growth/campaigns/:id/approve`
+- `POST /growth/campaigns/:id/schedule`
+- `POST /growth/campaigns/:id/run`
+- `POST /growth/campaigns/:id/events`
+
+Create a draft:
 
 ```json
 {
-  "name": "Ada Merchant",
-  "email": "ada@example.com",
-  "password": "password123",
-  "role": "MERCHANT",
-  "storeName": "Ada's Store"
+  "name": "Laptop accessories campaign",
+  "objective": "CROSS_SELL",
+  "audience": { "purchasedCategory": "Laptops", "withinDays": 30 },
+  "productIds": ["<merchant-product-id>"],
+  "content": { "headline": "Complete your setup" }
 }
 ```
 
-### `POST /api/auth/login`
+Campaign products must be active, in stock, and owned by the merchant. A campaign must be approved before it can be scheduled or run.
 
-Authenticates an existing user and returns the current user plus a bearer token.
+Run a campaign:
+
+```json
+{ "recipients": ["<buyer-id>"] }
+```
+
+The run endpoint creates durable delivery records with idempotency keys. A production delivery adapter and background scheduler are not included yet.
+
+Record an event:
 
 ```json
 {
-  "email": "ada@example.com",
-  "password": "password123"
+  "eventType": "campaign_clicked",
+  "recipientId": "<buyer-id>",
+  "productId": "<product-id>",
+  "metadata": {}
 }
 ```
 
-### `POST /api/auth/logout`
+Supported event types include `campaign_delivered`, `campaign_clicked`, `campaign_converted`, `recommendation_rejected`, `upsell_accepted`, and `cross_sell_accepted`.
 
-Requires a bearer token. Stateless JWT logout is completed by clearing the token on the client.
+## Policies, Approvals, Audit, and Recovery
 
-### `GET /api/auth/me`
+Buyer policy endpoints constrain purchase actions and can return `ALLOW`, `DENY`, or `REQUIRES_APPROVAL`. Approval endpoints operate on an exact cart snapshot, amount, currency, and expiry.
 
-Requires a bearer token and returns the current user.
-
-### Role Checks
-
-The backend includes reusable authentication and role middleware. The current protected role-check routes are:
-
-- `GET /api/auth/merchant`: requires `MERCHANT`.
-- `GET /api/auth/buyer`: requires `BUYER`.
-
-## AI-Readable Catalog
-
-`GET /api/agent/catalog` and `GET /api/agent/catalog/:productId` require a bearer token and expose a deterministic, agent-oriented representation of products. The catalog includes only `ACTIVE` products with stock above zero. It returns internal product and merchant IDs, price, currency, availability, stock, status, attributes, and `use_cases`; it never returns user records or credentials.
-
-```json
-{
-  "product_id": "...",
-  "merchant_id": "...",
-  "price": 6999,
-  "currency": "INR",
-  "availability": "IN_STOCK",
-  "attributes": { "brand": "Nike", "use_case": "Daily Running" },
-  "use_cases": ["Daily Running"]
-}
-```
-
-## Buyer Search
-
-`GET /api/products/search` requires a buyer bearer token. It supports `q`, `category`, `minPrice`, `maxPrice`, `inStock`, `attributes`, `page`, `limit`, and `sort` (`relevance`, `price_asc`, or `price_desc`). Attributes accept JSON or `key:value` pairs separated by commas. Results contain deterministic scores and match reasons; active, in-stock catalog products are used as the discovery source.
-
-`GET /api/products/search/:productId` returns a discoverable product for the buyer details view.
-
-## Cart and Orders
-
-Cart endpoints require a buyer bearer token: `GET /api/cart`, `POST /api/cart/items`, `PUT /api/cart/items/:productId`, `DELETE /api/cart/items/:productId`, and `DELETE /api/cart`. Add and update requests accept a positive integer `quantity`; product status, stock, price, and all display data are read from PostgreSQL.
-
-`POST /api/orders/checkout` creates a `PENDING` order and `PENDING` payment from the buyer's current cart. The server recalculates each item subtotal and total from current database prices, stores those unit prices in `order_items`, and clears the cart in the same transaction. Product rows are locked during validation with `FOR UPDATE`. This phase validates stock but does not reserve or decrement it, because payment is not integrated yet; concurrent checkouts therefore cannot make stock negative, while a future payment phase should add reservation/expiry semantics.
-
-`GET /api/orders` and `GET /api/orders/:id` are scoped by authenticated identity: buyers see their own orders and merchants see orders assigned to their merchant. The current schema supports one merchant per order, so checkout rejects a cart containing products from multiple merchants.
-
-## Recommendations
-
-`POST /api/recommendations` requires a buyer bearer token and accepts `{ "query": "running shoes under 8000", "maxResults": 3 }`. It uses the active, in-stock catalog and deterministic search ranking, then returns grounded recommendations, scores, matched requirements, and price/ranking trade-offs. No LLM or invented catalog facts are used.
+`GET /audit` returns records scoped to the authenticated buyer or merchant. Audit entries capture actor, action, entity, context, decision, explanation, and timestamp. Payment recovery endpoints expose retryable failed-payment state without creating duplicate payment orders.
