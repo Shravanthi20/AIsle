@@ -6,74 +6,76 @@
 - npm 10 or newer
 - Docker Desktop
 
-## Install
+## Installation
 
-From the repository root:
+From the repository root, install dependencies. The repository utilizes npm workspaces for managing the `frontend` and `backend` seamlessly.
 
 ```powershell
 npm install
 ```
 
-The repository uses npm workspaces for `frontend` and `backend`.
-
 ## Configure Environment
 
-Copy `.env.example` to `.env`:
+Copy the `.env.example` template to a localized `.env` file:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Local defaults:
+**Local Infrastructure Defaults:**
+- **Frontend:** port `5173`
+- **Backend:** port `4000`
+- **PostgreSQL:** port `5432`
+- **Database Name:** `aisle_dev`
 
-```text
-Frontend: 5173
-Backend: 4000
-PostgreSQL: 5432
-Database: aisle_dev
-```
+*Note on Payments:* Set Razorpay test keys in your `.env` to exercise the complete checkout and payment verification flows. Do not commit real production credentials.
 
-Set Razorpay test keys in `.env` to exercise payments. Do not commit real credentials.
+*Note on LLM Integration:* Optional LLM intent extraction leverages `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL`. The provider must return structured JSON through an OpenAI-compatible chat-completions API. The architecture is resilient: candidate retrieval and ranking execute natively in code, allowing the backend to gracefully fall back when the LLM provider is unavailable or times out.
 
-Optional LLM intent extraction uses `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL`. The provider must return structured JSON through an OpenAI-compatible chat-completions API. Candidate retrieval and ranking remain local code; the backend falls back when the provider is unavailable.
+## Local Database Lifecycle
 
-## Start the Database
-
+**Start PostgreSQL:**
 ```powershell
 docker compose up -d postgres
-docker ps
 ```
 
-Stop it with `docker compose stop postgres`. Remove the local database volume only for a deliberate clean reset:
+**Stop PostgreSQL:**
+```powershell
+docker compose stop postgres
+```
 
+**Clean Reset (Destructive):**
+If you need to deliberately destroy the local database volume and start fresh:
 ```powershell
 docker compose down -v
 ```
 
-## Migrate and Seed
+## Migrations and Seeding
+
+Apply database schemas and populate the development environment:
 
 ```powershell
 npm run db:migrate --workspace backend
 npm run db:seed --workspace backend
 ```
 
-Migrations and seeds are ordered SQL files. The migration runner tracks applied files. Seeds use conflict-safe inserts and can be rerun.
+Migrations and seeds are strictly ordered SQL files. The robust migration runner tracks applied files to prevent duplication. Seeds utilize conflict-safe `UPSERT` mechanisms and can be safely re-run at any time.
 
 ## Run the Applications
 
-Backend terminal:
+The backend and frontend must be run concurrently in separate terminals.
 
+**Backend Terminal:**
 ```powershell
 npm run dev --workspace backend
 ```
+*Available at `http://localhost:4000/api`*
 
-Frontend terminal:
-
+**Frontend Terminal:**
 ```powershell
 npm run dev --workspace frontend
 ```
-
-Open `http://localhost:5173`. The frontend uses `VITE_API_BASE_URL` and defaults to `http://localhost:4000/api`.
+*Available at `http://localhost:5173`. The frontend automatically utilizes `VITE_API_BASE_URL` mapped to the backend port.*
 
 ## Useful Commands
 
@@ -82,40 +84,53 @@ npm run build
 npm run typecheck
 npm run lint
 npm test --workspace backend
-npm run build --workspace backend
-npm run build --workspace frontend
 ```
 
 ## Development Workflow
 
-1. Start PostgreSQL.
-2. Apply migrations.
-3. Seed or reset development data.
-4. Start backend and frontend dev servers.
-5. Use a demo buyer to test search, recommendations, cart, checkout, and payment.
-6. Use a demo merchant to test catalog, analytics, growth opportunities, and campaign APIs.
-7. Run lint, typecheck, and focused tests before submitting changes.
+```mermaid
+flowchart TD
+    A[Start PostgreSQL via Docker] --> B[Apply Migrations]
+    B --> C[Seed Development Data]
+    C --> D[Start Backend Server]
+    D --> E[Start Frontend Server]
+    E --> F{Testing Phase}
+    F -->|Buyer Flow| G[Test Search, Cart, Payment]
+    F -->|Merchant Flow| H[Test Analytics, Campaigns, Growth]
+    G --> I[Lint & Typecheck]
+    H --> I
+    I --> J[Run Test Suite]
+    J --> K[Submit PR]
+```
 
 ## Testing Strategy
 
-Backend tests use Node's test runner through `tsx`. Services are dependency-injected so ranking and guardrail behavior can be tested without a live database.
+The backend test suite is built on Node's native test runner utilizing `tsx`. 
+Services are fully dependency-injected, guaranteeing that complex ranking algorithms and policy guardrail behaviors can be rigorously tested in isolation without requiring a live database connection.
 
-Coverage includes catalog transformation, search filters, structured intent, soft preference parsing, recommendation budget behavior, upsell stretch, cross-sell co-purchase ranking, purchased-product exclusion, `DO_NOTHING`, role isolation, cart and checkout validation, policies, approvals, payment verification, recovery, analytics, and audit ownership.
+**Coverage Priorities:**
+- Catalog transformations and strict search filters
+- Structured intent parsing and soft preference evaluation
+- Recommendation budget stretch logic
+- Upsell threshold logic and cross-sell co-purchase ranking
+- Purchased-product exclusion logic and `DO_NOTHING` termination
+- Secure role isolation
+- Cart integrity, checkout validation, and exact approval snapshots
+- Payment signature verification and idempotent recovery
+- Authoritative audit ownership
 
-## Code Conventions
+## Engineering Conventions
 
-- Keep routes thin.
-- Put business rules in services.
-- Put SQL in repositories.
-- Use authenticated identity from middleware; never trust buyer or merchant IDs from request bodies.
-- Revalidate product availability and price before high-impact actions.
-- Keep agent tools narrow and explicit.
-- Return concise user-facing explanations, never internal chain-of-thought.
-- Add audit records for important agent and state-changing decisions.
-- Prefer deterministic, injectable logic for ranking and eligibility.
+- **Keep Routes Thin:** Routes should only handle HTTP boundary logic.
+- **Business Logic in Services:** All rules and orchestrations live strictly in the service layer.
+- **Data Access in Repositories:** All SQL and data mapping are encapsulated within repositories.
+- **Zero Trust:** Always utilize the authenticated identity extracted from the JWT middleware. Never trust buyer or merchant IDs passed in the request body.
+- **Strict Revalidation:** Revalidate product availability, stock, and price authoritative data instantly before executing any high-impact action.
+- **Agent Safety:** Keep agent tools constrained, narrow, and structurally explicit.
+- **User Explanations:** Return concise, user-facing explanations directly, rather than exposing raw internal model chain-of-thought.
+- **Audit Everything:** Emit permanent audit records for all high-impact agent decisions and state changes.
+- **Deterministic First:** Prefer deterministic, highly-testable code for ranking, filtering, and eligibility over opaque model execution.
 
 ## Operational Boundaries
 
-The current campaign system persists drafts, approval, scheduling state, runs, delivery jobs, idempotency keys, and events. It does not yet include a production message provider or worker process.
-
-The recommendation layer retrieves candidates before ranking and does not require an LLM call for every product. Actual throughput depends on the deployment's database, Node.js resources, cache strategy, and any model provider. Load testing is required before making capacity claims.
+The recommendation layer intentionally retrieves candidate sets prior to ranking, bypassing the need to call an LLM for every single product in the catalog. True operational throughput will scale directly with PostgreSQL tuning, Node.js concurrency configuration, caching strategies, and specific LLM provider latency.
