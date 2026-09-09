@@ -1,178 +1,107 @@
 # AIsle
 
-## AI Growth and Agentic Commerce
+**AIsle** is an advanced AI-powered commerce platform that seamlessly integrates intelligent discovery and proactive merchant growth into a unified ecosystem. The platform leverages two coordinated agents—an **AI Shopping Agent** for buyers and an **AI Growth Agent** for merchants—to deliver an intuitive, intent-driven shopping experience alongside data-backed revenue generation strategies.
 
-AIsle is an AI commerce platform with two coordinated agents:
-
-- **AI Shopping Agent**: helps customers discover, compare, and safely purchase products through natural language.
-- **AI Growth Agent**: helps merchants find revenue opportunities through personalized upselling, cross-selling, and campaign workflows.
-
-The platform is designed around one principle:
-
+AIsle operates on a core architectural principle:
 > **AI reasons. Ranking models score. Policies constrain. Agents act.**
 
-That separation makes the system useful without making the catalog, inventory, price, payment, or approval decisions dependent on an opaque model response.
+By decoupling the reasoning engine from the deterministic business logic, AIsle ensures that catalog, inventory, pricing, and policy decisions are transparent, predictable, and fully controlled, while still benefiting from natural language understanding.
 
-## The Pitch
+## Key Capabilities
 
-Most commerce systems treat discovery and growth as separate problems. AIsle connects them.
-
-On the customer side, a buyer can say:
-
-```text
-I need a laptop for coding around INR 70,000, preferably lightweight.
-```
-
-AIsle extracts the intent, searches only the available catalog, ranks candidates using deterministic signals, explains tradeoffs, and keeps the customer in control of cart and checkout actions.
-
-On the merchant side, the same commerce context can identify:
-
-```text
-Customers who bought a laptop have not purchased a laptop bag.
-```
-
-The Growth Agent can turn that opportunity into a cross-sell recommendation or an approved campaign. Product relevance comes first; business value is optimized only within customer fit, availability, and policy guardrails.
+- **Natural Language Commerce**: Buyers can express complex intents (e.g., "I need a lightweight laptop for coding under $1000"), and the AI Shopping Agent will extract requirements, rank available products, and explain tradeoffs.
+- **Proactive Merchant Growth**: The AI Growth Agent analyzes commerce context (e.g., purchase history, cart contents) to identify high-value upsell and cross-sell opportunities, generating actionable campaigns and recommendations.
+- **Guardrailed Execution**: All agent-driven actions are strictly constrained by business policies, inventory availability, and approval workflows. Agents cannot silently mutate carts or bypass checkout validation.
+- **Durable Workflows**: Campaigns and recommendations are persisted as drafts, requiring explicit approval and scheduling, supported by idempotency keys to ensure safe execution.
+- **Comprehensive Audit & Recovery**: Every decision made by the agents is logged for auditing, and robust recovery mechanisms are in place to handle payment failures or state inconsistencies.
 
 ## Product Flows
 
-### Customer flow
+### Buyer Experience Flow
 
-```text
-Natural-language request
-	-> Structured intent
-	-> Candidate retrieval
-	-> Deterministic ranking
-	-> Recommendation and explanation
-	-> Follow-up refinement
-	-> Explicit product selection
-	-> Cart
-	-> Checkout confirmation and policy evaluation
-	-> Razorpay payment
-	-> Order and audit event
+```mermaid
+flowchart TD
+    A[Natural Language Request] --> B[Structured Intent Extraction]
+    B --> C[Candidate Retrieval]
+    C --> D[Deterministic Ranking]
+    D --> E[Recommendation & Tradeoff Explanation]
+    E --> F[Follow-up Refinement]
+    F --> G[Explicit Product Selection]
+    G --> H[Add to Cart]
+    H --> I[Checkout Confirmation & Policy Evaluation]
+    I --> J[Razorpay Payment]
+    J --> K[Order Placed & Audit Event Logged]
 ```
 
-### Merchant growth flow
+### Merchant Growth Flow
 
-```text
-Catalog and order data
-	-> Customer/product context
-	-> Growth opportunity detection
-	-> Upsell or cross-sell ranking
-	-> Next best action
-	-> Merchant approval
-	-> Campaign draft and scheduling
-	-> Delivery jobs
-	-> Events and attribution
+```mermaid
+flowchart TD
+    A[Catalog & Order Data] --> B[Customer & Product Context]
+    B --> C[Growth Opportunity Detection]
+    C --> D[Upsell / Cross-sell Ranking]
+    D --> E[Next Best Action Recommendation]
+    E --> F[Merchant Approval]
+    F --> G[Campaign Draft & Scheduling]
+    G --> H[Delivery Jobs via Idempotent Execution]
+    H --> I[Event Tracking & Attribution]
 ```
-
-## What Makes It Different
-
-### Customer-first recommendations
-
-Customer utility is evaluated using:
-
-- Use-case and category fit
-- Explicit mandatory requirements
-- Soft preferences
-- Price and value
-- Product attributes and quality signals
-- Availability and stock
-- Customer purchase context when available
-
-Strict phrases such as `under`, `below`, and `up to` remain hard price limits. Phrases such as `around` can allow a controlled budget stretch. A better product is presented as a tradeoff, not silently substituted.
-
-### Upsell without pressure
-
-Upsell candidates are higher-value alternatives in the same category or use case. They must be available, relevant, and within the configured stretch. The response includes the price difference and a concise reason such as improved quality, capacity, or fit.
-
-### Cross-sell with evidence
-
-Cross-sell candidates come from:
-
-1. Frequently bought together relationships from paid orders
-2. Merchant-defined relationships
-3. Compatibility attributes
-4. Shared use cases
-5. Customer purchase history
-
-Already-purchased and unavailable products are excluded.
-
-### Guardrailed agent actions
-
-Agents do not silently purchase products or mutate carts. State-changing actions pass through the existing cart, order, payment, policy, approval, audit, and recovery services.
-
-### Durable campaigns
-
-Campaigns are persisted as drafts, approvals, runs, deliveries, and events. Delivery jobs receive idempotency keys, allowing retries without creating duplicate jobs.
 
 ## Technical Architecture
 
-```text
-React + Vite frontend
-					|
-			Express API
-					|
-Routes -> Controllers -> Services -> Repositories
-					|                 |
-			 Policies          AuditService
-					|
-			 PostgreSQL
-					|
-	 Razorpay test integration
+The platform follows a layered, service-oriented architecture designed for scalability, maintainability, and clear separation of concerns.
+
+```mermaid
+graph TD
+    UI[React + Vite Frontend] --> API[Express API Gateway]
+    
+    subgraph Backend
+        API --> Routes
+        Routes --> Controllers
+        Controllers --> Services
+        Services --> Repositories
+        
+        Services -.-> Agents[AI Agents & Tools]
+        Services -.-> Policies[Policy & Approval Services]
+        Services -.-> Audit[Audit & Recovery Services]
+    end
+    
+    Repositories --> DB[(PostgreSQL)]
+    Services --> Razorpay[Razorpay Integration]
 ```
 
-The backend is deliberately layered:
-
-- **Routes** define authenticated HTTP boundaries.
-- **Controllers** validate request boundaries and serialize responses.
-- **Services** own business rules and orchestration.
-- **Repositories** own PostgreSQL queries.
-- **Agent tools** expose narrow capabilities to buyer and merchant agents.
-- **Policy and approval services** constrain high-impact actions.
-- **Audit and recovery services** record decisions and handle failure paths.
-
-### Recommendation path
-
-```text
-Query
-	-> ShoppingIntentService
-	-> ProductSearchService / CandidateRetrievalService
-	-> Deterministic scoring
-	-> Top-N recommendations
-	-> User-facing explanation
-```
-
-The system does not call an LLM once per product. Candidate retrieval and scoring happen in normal application code, which keeps the architecture suitable for high request volume. An external LLM can be added for intent or explanation enrichment without handing it the entire catalog.
-
-### Growth path
-
-```text
-CommerceContextService
-	-> UpsellService / CrossSellService
-	-> NextBestActionService
-	-> GrowthOpportunityService
-	-> CampaignService
-```
-
-`DO_NOTHING` is a valid decision when no relevant, available opportunity exists.
+- **Routes & Controllers**: Handle authenticated HTTP boundaries, request validation, and response serialization.
+- **Services**: Encapsulate core business rules, orchestration, and growth logic.
+- **Repositories**: Manage PostgreSQL data access.
+- **Agent Tools**: Expose narrow, secure capabilities to the buyer and merchant agents.
+- **Policy & Approval Services**: Constrain high-impact actions to ensure compliance and merchant control.
+- **Audit & Recovery Services**: Record system decisions and gracefully handle failure paths.
 
 ## Repository Layout
 
 ```text
-frontend/                  React buyer and merchant application
-backend/src/agents/        Buyer and merchant agents plus tools
-backend/src/services/      Commerce, search, cart, payment, growth services
-backend/src/repositories/  PostgreSQL data access
-backend/src/policy/        Buyer policy and approval workflows
-backend/src/audit/         Auditable agent and user decisions
-backend/src/recovery/      Payment failure recovery
-backend/db/migrations/     Ordered PostgreSQL schema migrations
-backend/db/seeds/          Ordered development data seeds
-docs/                      Architecture, API, database, and development docs
-docker-compose.yml         Local PostgreSQL service
+frontend/                  React application for buyer and merchant interfaces
+backend/src/agents/        AI agents (Buyer, Merchant) and specialized tools
+backend/src/services/      Core domains (Commerce, Search, Cart, Payment, Growth)
+backend/src/repositories/  PostgreSQL data access layer
+backend/src/policy/        Business policies and approval workflows
+backend/src/audit/         Auditable agent and user decision logging
+backend/src/recovery/      Resilient payment failure recovery
+backend/db/migrations/     PostgreSQL schema migrations
+backend/db/seeds/          Development data seeds
+docs/                      Architecture, API, database, and development documentation
+docker-compose.yml         Local PostgreSQL service configuration
 ```
 
-## Run Locally
+## Technology Stack
+
+- **Frontend**: React, TypeScript, Vite, Tailwind CSS, Recharts
+- **Backend**: Node.js, Express, TypeScript
+- **Database**: PostgreSQL
+- **Infrastructure**: Docker
+- **Payments**: Razorpay
+
+## Local Development Guide
 
 ### Prerequisites
 
@@ -180,21 +109,28 @@ docker-compose.yml         Local PostgreSQL service
 - npm 10 or newer
 - Docker Desktop
 
-### Install
+### Installation
 
-From the repository root:
+Clone the repository and install dependencies from the root:
 
 ```powershell
 npm install
 ```
 
-### Configure
+### Configuration
 
-Copy `.env.example` to `.env` and adjust values as needed. Local development defaults to PostgreSQL on port `5432`, the backend on port `4000`, and the frontend on port `5173`.
+Copy the example environment file and configure it for your local setup:
 
-For LLM-backed intent extraction, configure the optional `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` values. The backend expects an OpenAI-compatible chat-completions endpoint and falls back to local extraction when these values are absent or the provider times out.
+```powershell
+cp .env.example .env
+```
+*(By default, PostgreSQL runs on port `5432`, the backend on port `4000`, and the frontend on port `5173`.)*
 
-### Start the database and load data
+For LLM-backed intent extraction, provide the `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` in your `.env` file. The backend expects an OpenAI-compatible chat-completions endpoint and will gracefully fall back to local extraction if unavailable.
+
+### Database Setup
+
+Start the PostgreSQL container and initialize the database schema and seed data:
 
 ```powershell
 docker compose up -d postgres
@@ -202,30 +138,25 @@ npm run db:migrate --workspace backend
 npm run db:seed --workspace backend
 ```
 
-The development seed creates four merchants with approximately 50 to 60 products each, buyers, carts, product attributes, and sample order history. It is safe to rerun.
+*Note: The development seed populates the database with sample merchants, products, buyers, carts, and order history.*
 
-### Start the applications
+### Running the Applications
 
-Terminal 1:
-
+**Start the Backend:**
 ```powershell
 npm run dev --workspace backend
 ```
+*API available at `http://localhost:4000`*
 
-Backend: `http://localhost:4000`
-
-Terminal 2:
-
+**Start the Frontend:**
 ```powershell
 npm run dev --workspace frontend
 ```
+*Application available at `http://localhost:5173`*
 
-Frontend: `http://localhost:5173`
+### Demo Accounts
 
-### Demo accounts
-
-Merchant accounts use password `aisle_demo_merchant123`:
-
+**Merchant Accounts** (Password: `aisle_demo_merchant123`):
 - `riya@stridehub.test`
 - `arjun@soundnest.test`
 - `neha@techcrate.test`
@@ -234,33 +165,34 @@ Merchant accounts use password `aisle_demo_merchant123`:
 - `meera@vastra.test`
 - `kavya@rangoli.test`
 
-Buyer accounts use password `aisle_demo_buyer123`:
-
+**Buyer Accounts** (Password: `aisle_demo_buyer123`):
 - `kabir@example.test`
 - `ananya@example.test`
 - `dev@example.test`
 
-## Main API Surface
+## API Reference
 
-All protected routes use a bearer token from login.
+All protected API routes require a bearer token obtained via login.
 
-| Area            | Key endpoints                                                                 |
+| Domain          | Key Endpoints                                                                 |
 | --------------- | ----------------------------------------------------------------------------- |
-| Auth            | `/api/auth/register`, `/api/auth/login`, `/api/auth/me`                       |
-| Catalog         | `/api/agent/catalog`, `/api/agent/catalog/:productId`                         |
-| Search          | `/api/products/search`, `/api/products/search/:productId`                     |
-| Recommendations | `POST /api/recommendations`                                                   |
-| Buyer agent     | `POST /api/agent/buyer/chat`                                                  |
-| Cart and orders | `/api/cart`, `/api/orders/checkout`, `/api/orders`                            |
-| Payments        | `/api/payments/create-order`, `/api/payments/verify`, `/api/payments/failure` |
-| Merchant agent  | `POST /api/agent/merchant/chat`                                               |
-| Growth          | `/api/growth/opportunities`, `/api/growth/campaigns`                          |
-| Analytics       | `/api/analytics/merchant`, `/api/analytics/buyer`                             |
-| Audit           | `/api/audit`                                                                  |
+| **Auth**        | `/api/auth/register`, `/api/auth/login`, `/api/auth/me`                       |
+| **Catalog**     | `/api/agent/catalog`, `/api/agent/catalog/:productId`                         |
+| **Search**      | `/api/products/search`, `/api/products/search/:productId`                     |
+| **Recommendations** | `POST /api/recommendations`                                               |
+| **Buyer Agent** | `POST /api/agent/buyer/chat`                                                  |
+| **Cart & Orders**| `/api/cart`, `/api/orders/checkout`, `/api/orders`                            |
+| **Payments**    | `/api/payments/create-order`, `/api/payments/verify`, `/api/payments/failure` |
+| **Merchant Agent**| `POST /api/agent/merchant/chat`                                             |
+| **Growth**      | `/api/growth/opportunities`, `/api/growth/campaigns`                          |
+| **Analytics**   | `/api/analytics/merchant`, `/api/analytics/buyer`                             |
+| **Audit**       | `/api/audit`                                                                  |
 
-See [docs/api.md](docs/api.md) for request and response details.
+*For comprehensive API documentation, refer to [docs/api.md](docs/api.md).*
 
-## Quality and Safety
+## Code Quality and Testing
+
+Ensure code quality and run the automated test suite:
 
 ```powershell
 npm run lint
@@ -268,125 +200,11 @@ npm run typecheck
 npm test --workspace backend
 ```
 
-The backend has focused tests for search, recommendations, upsell, cross-sell, next-best-action, cart, checkout, policies, approvals, payments, recovery, analytics, and role isolation.
+The test suite covers critical paths including search, recommendations, upsell, cross-sell, cart management, checkout, policies, payments, recovery, and analytics.
 
-## Current Boundaries
+## Further Documentation
 
-The implementation provides durable campaign drafts, approval, scheduling, run creation, delivery records, idempotency, and event recording. A production deployment still needs a real email, SMS, push, or in-app delivery adapter and a background worker for scheduled execution.
-
-Razorpay integration is configured for test-mode credentials. Payment verification is server-side; webhook processing and production payment operations require deployment-specific secrets and configuration.
-
-The current ranking layer is deterministic and catalog-driven. It is architecturally ready for precomputed features, embeddings, caching, and an intent/explanation model, but no load test claim is made until those deployment components are measured in the target infrastructure.
-
-## Documentation
-
-- [Architecture](docs/architecture.md)
-- [API reference](docs/api.md)
-- [Database and seeds](docs/database.md)
-- [Development guide](docs/development.md)
-
-AIsle is an AI Growth & Agentic Commerce platform designed for the Razorpay buildathon. It helps merchants understand and grow AI-assisted revenue while enabling buyers to discover, compare, and purchase products through an AI shopping experience.
-
-## Product
-
-### Merchant Dashboard
-
-The Merchant Dashboard will help merchants understand how AI contributes to sales. Planned capabilities include catalog visibility, product understanding, recommendation performance, growth opportunities, transaction insights, and revenue analytics.
-
-### AI Buyer Dashboard
-
-The AI Buyer Dashboard will let buyers interact with an AI shopping assistant. Buyers will be able to search products, explore recommendations, compare options, build a cart, and complete purchases through Razorpay checkout.
-
-## Product Flow
-
-Merchant Catalog -> Product Understanding -> Buyer Intent -> Product Discovery -> Recommendations -> Upsell/Cross-sell -> Cart -> Checkout -> Razorpay -> Audit -> Analytics
-
-## Technology Stack
-
-- React
-- TypeScript
-- Vite
-- Tailwind CSS
-- Node.js
-- Express
-- PostgreSQL
-- Docker
-
-## Repository Structure
-
-- `frontend/`: React, TypeScript, Vite, and Tailwind application for merchant and buyer experiences.
-- `backend/`: Node.js, TypeScript, and Express API with layered routes, controllers, services, repositories, and configuration.
-- `docs/`: Architecture, API, and development documentation.
-- `docker/`: Docker-related project assets for local development.
-- `docker-compose.yml`: Local PostgreSQL service configuration.
-
-## Local Development
-
-### Prerequisites
-
-- Node.js 20+
-- npm 10+
-- Docker Desktop
-
-### Environment Configuration
-
-Copy `.env.example` to `.env` and update values as needed for local development. The example file uses non-production placeholder credentials.
-
-### Install Dependencies
-
-```bash
-npm install
-```
-
-### Start PostgreSQL
-
-```bash
-docker compose up -d postgres
-```
-
-### Run Database Migrations
-
-```bash
-npm run db:migrate --workspace backend
-```
-
-### Seed Development Data
-
-```bash
-npm run db:seed --workspace backend
-```
-
-### Start Backend
-
-```bash
-npm run dev --workspace backend
-```
-
-The backend runs on `http://localhost:4000` by default.
-
-### Start Frontend
-
-```bash
-npm run dev --workspace frontend
-```
-
-The frontend runs on `http://localhost:5173` by default.
-
-## Current Status
-
-The project is currently at the foundation/setup stage. Core application structure, initial routing, health checks, local PostgreSQL configuration, the initial commerce database schema, documentation, and development tooling are in place.
-
-## Roadmap
-
-1. Project foundation
-2. Merchant catalog
-3. AI-readable catalog
-4. Buyer experience
-5. Product discovery
-6. Recommendation engine
-7. Growth agent
-8. Cart and checkout
-9. Razorpay integration
-10. Audit system
-11. Merchant analytics
-12. Feedback and learning
+- [Architecture Overview](docs/architecture.md)
+- [API Reference](docs/api.md)
+- [Database & Seeds](docs/database.md)
+- [Development Guide](docs/development.md)
